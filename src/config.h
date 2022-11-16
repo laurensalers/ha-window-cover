@@ -1,0 +1,1 @@
+#define WM_ACCESSPOINT_PASSWORD "cynu4c9r"
