@@ -8,6 +8,9 @@
 #include <Utils.h>
 #include <ObservableValue.h>
 
+// TODO
+// * Store max value in eeprom
+
 // Topics
 const char *topicStepperPositionSavedGet = "stepperPositionSaved/get";
 const char *topicStepperPositionGet = "stepperPosition/get";
@@ -16,9 +19,18 @@ const char *topicStepperPositionMaxGet = "stepperPositionMax/get";
 const char *topicStepperPositionMaxSet = "stepperPositionMax/set";
 const char *topicPositionGet = "position/get";
 const char *topicPositionSet = "position/set";
+const char *topicSystemStateGet = "systemstate/get";
+const char *topicSystemStateSet = "systemstate/set";
+const char *topicMove = "move/set";
 
 char deviceName[50];
-bool restoreSavedStepperPosition = false;
+
+typedef enum
+{
+  UNKNOWN = 0,
+  CALIBRATE = 1,
+  READY = 2
+} SystemState;
 
 WiFiClient net;
 WiFiManager wifiManager;
@@ -29,7 +41,8 @@ AccelStepper stepper(AccelStepper::DRIVER, STEP_PIN, DIR_PIN);
 // Observables
 ObservableValue<long> stepperPosition(0);
 ObservableValue<long> stepperPositionMax(0);
-ObservableValue<byte> position(0); // In percents
+ObservableValue<byte> position(0); // In percent
+ObservableValue systemState(SystemState::UNKNOWN);
 
 bool connectMqtt()
 {
@@ -41,19 +54,81 @@ bool connectMqtt()
   return client.connect(deviceName, "esp32", "cynu4c9r");
 }
 
+void updateSystemState(SystemState requestedState)
+{
+  // Move into calibration state
+  if ((systemState.value() == SystemState::UNKNOWN || systemState.value() == SystemState::READY) && requestedState == SystemState::CALIBRATE)
+  {
+    systemState.setValue(requestedState);
+    return;
+  }
+
+  // Move from calibration state to ready state
+  if (systemState.value() == SystemState::CALIBRATE && stepperPositionMax.value() > 0 && requestedState == SystemState::READY)
+  {
+    systemState.setValue(requestedState);
+    return;
+  }
+}
+
 void handleMqttMessage(String &topic, String &payload)
 {
-  if (restoreSavedStepperPosition && topic.endsWith(topicStepperPositionSavedGet))
+  if (systemState.value() == SystemState::UNKNOWN && topic.endsWith(topicStepperPositionSavedGet) && !payload.isEmpty())
   {
     stepperPosition.setValue(payload.toInt());
     stepper.setCurrentPosition(stepperPosition.value());
-    restoreSavedStepperPosition = false;
+    updateSystemState(SystemState::READY);
+    return;
+  }
+
+  if (topic.endsWith(topicSystemStateSet))
+  {
+    if (payload.equals("calibrate"))
+    {
+      updateSystemState(SystemState::CALIBRATE);
+      return;
+    }
     return;
   }
 
   if (topic.endsWith(topicStepperPositionMaxSet))
   {
-    stepperPositionMax.setValue(payload.toInt());
+    // Save current position as max position
+    if (payload == "save")
+    {
+      stepperPositionMax.setValue(stepperPosition.value());
+    }
+    else
+    {
+      stepperPositionMax.setValue(payload.toInt());
+    }
+
+    updateSystemState(SystemState::READY);
+    return;
+  }
+
+  // Allow when ready or calibrating
+  if (systemState.value() != SystemState::UNKNOWN && topic.endsWith(topicMove))
+  {
+    if (payload.equals("down"))
+    {
+      stepper.moveTo(0);
+      return;
+    }
+
+    if (payload.equals("up"))
+    {
+      stepper.moveTo(LONG_MAX);
+      return;
+    }
+
+    stepper.stop();
+    return;
+  }
+
+  // Only allow ready state handlers below this
+  if (systemState.value() != SystemState::READY)
+  {
     return;
   }
 
@@ -71,12 +146,16 @@ void handleMqttMessage(String &topic, String &payload)
 
 void configureStepper()
 {
-  // TODO:
-  // stepper.setEnablePin(ENABLE_PIN);
-  // stepper.setAcceleration();
-  // stepper.setMaxSpeed();
-
+// A4988
+#ifdef STEPPER_A4988
+  stepper.setEnablePin(ENABLE_PIN);
+  stepper.setAcceleration(STEPPER_ACCELERATION);
+  stepper.setMaxSpeed(STEPPER_MAXSPEED);
   stepper.disableOutputs();
+#endif
+
+  // TMC2209
+  // TODO...
 }
 
 void updatePosition()
@@ -91,6 +170,20 @@ void updatePosition()
   position.setValue(pos);
 }
 
+void handleSystemStateChange(SystemState state)
+{
+  if (state == SystemState::READY || state == SystemState::CALIBRATE)
+  {
+    stepper.enableOutputs();
+  }
+  else
+  {
+    stepper.disableOutputs();
+  }
+
+  mqttQueueHandler.queueMessage(topicSystemStateGet, state);
+}
+
 void bindObservers()
 {
   stepperPosition.addObserver([](long value)
@@ -103,6 +196,8 @@ void bindObservers()
 
   position.addObserver([](byte value)
                        { mqttQueueHandler.queueMessage(topicPositionGet, value); });
+
+  systemState.addObserver(handleSystemStateChange);
 }
 
 void setup()
@@ -125,6 +220,9 @@ void setup()
 
   client.subscribe(topicStepperPositionSet);
   client.subscribe(topicStepperPositionMaxSet);
+  client.subscribe(topicPositionSet);
+  client.subscribe(topicMove);
+  client.subscribe(topicSystemStateSet);
 
   configureStepper();
 }

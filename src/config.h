@@ -3,3 +3,18 @@
 #define STEP_PIN 1
 #define DIR_PIN 2
 #define ENABLE_PIN 3
+
+#define STEPPER_A4988
+// #define STEPPER_TMC2209
+
+// A4988 Stepper
+#ifdef STEPPER_A4988
+#define STEPPER_ACCELERATION 800
+#define STEPPER_MAXSPEED 400
+#endif
+
+// TMC2209
+#ifdef STEPPER_TMC2209
+#define STEPPER_ACCELERATION 800
+#define STEPPER_MAXSPEED 400
+#endif
