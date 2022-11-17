@@ -118,7 +118,11 @@ void handleMqttMessage(String &topic, String &payload)
 
     if (payload.equals("up"))
     {
-      stepper.moveTo(LONG_MAX);
+      long santizedValue = systemState.value() == SystemState::CALIBRATE
+                               ? LONG_MAX
+                               : stepperPositionMax.value();
+
+      stepper.moveTo(santizedValue);
       return;
     }
 
