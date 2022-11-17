@@ -79,7 +79,7 @@ void configureStepper()
   stepper.disableOutputs();
 }
 
-void calculatePosition()
+void updatePosition()
 {
   if (stepperPositionMax.value() == 0)
   {
@@ -95,7 +95,8 @@ void bindObservers()
 {
   stepperPosition.addObserver([](long value)
                               { mqttQueueHandler.queueMessage(topicStepperPositionGet, value); 
-                                mqttQueueHandler.queueMessage(topicStepperPositionSavedGet, value, true); });
+                                mqttQueueHandler.queueMessage(topicStepperPositionSavedGet, value, true);
+                                updatePosition(); });
 
   stepperPositionMax.addObserver([](long value)
                                  { mqttQueueHandler.queueMessage(topicStepperPositionMaxGet, value); });
