@@ -33,7 +33,8 @@ public:
         {
             MqttMessage current = _mqttMessageQueue[_mqttCurrentMessage];
 
-            const char *fullTopic = Utils.getFullTopic(_baseTopic, current.topic);
+            char fullTopic[50];
+            Utils.setFullTopic(fullTopic, _baseTopic, current.topic);
 #if DEBUG
             Serial.println(fullTopic);
             Serial.println(current.message);

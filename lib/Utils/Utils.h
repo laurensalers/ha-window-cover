@@ -24,16 +24,13 @@ public:
 #endif
     }
 
-    const char *getFullTopic(const char *baseTopic, const char *topic)
+    void setFullTopic(char *fullTopic, const char *baseTopic, const char *topic)
     {
-        snprintf(fullTopic, sizeof(fullTopic), "%s/%s", baseTopic, topic);
-        return fullTopic;
+        sprintf(fullTopic, "%s/%s", baseTopic, topic);
     }
-
-private:
-    char fullTopic[50];
 };
 
+UtilsClass Utils;
 extern UtilsClass Utils;
 
 #endif

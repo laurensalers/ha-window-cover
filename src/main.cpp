@@ -4,16 +4,17 @@
 #include <MQTT.h>
 
 #include <Config.h>
-#include <MqttQueueHandler.h>
 #include <Utils.h>
+#include <MqttQueueHandler.h>
 #include <ObservableValue.h>
 
 // TODO
 // * Store max value in eeprom
 // * MQTT discover for HA
+// * Implement message queue, we may not sub/pub from the handle message cb
+// * Change system state based on observers not in the mqtt handler
 
 // Topics
-const char *topicStepperPositionSavedGet = "stepperPositionSaved/get";
 const char *topicStepperPositionGet = "stepperPosition/get";
 const char *topicStepperPositionSet = "stepperPosition/set";
 const char *topicStepperPositionMaxGet = "stepperPositionMax/get";
@@ -45,14 +46,48 @@ ObservableValue<long> stepperPositionMax(0);
 ObservableValue<byte> position(0); // In percent
 ObservableValue systemState(SystemState::UNKNOWN);
 
+void mqttSubscribe(const char *topic)
+{
+  char fullTopic[50];
+
+  Utils.setFullTopic(fullTopic, deviceName, topic);
+  Serial.printf("sub: [%s]\n", fullTopic);
+
+  client.subscribe(fullTopic);
+}
+
+void mqttUnSubscribe(const char *topic)
+{
+  char fullTopic[50];
+
+  Utils.setFullTopic(fullTopic, deviceName, topic);
+  Serial.printf("unsub: [%s]\n", fullTopic);
+
+  client.unsubscribe(fullTopic);
+}
+
 bool connectMqtt()
 {
-  if (!WiFi.isConnected() || client.connected())
+  if (client.connected() || !WiFi.isConnected())
   {
     return false;
   }
 
-  return client.connect(deviceName, "esp32", "cynu4c9r");
+  bool connected = client.connect(deviceName, "esp32", "cynu4c9r");
+
+  if (connected)
+  {
+    mqttSubscribe(topicStepperPositionSet);
+    mqttSubscribe(topicStepperPositionMaxSet);
+    mqttSubscribe(topicPositionSet);
+    mqttSubscribe(topicMove);
+    mqttSubscribe(topicSystemStateSet);
+    mqttSubscribe(topicStepperPositionGet);
+  }
+
+  Serial.printf("WiFi connected: %i, Mqtt connected: %i\n", WiFi.isConnected(), client.connected());
+
+  return connected;
 }
 
 void updateSystemState(SystemState requestedState)
@@ -78,13 +113,16 @@ void updateSystemState(SystemState requestedState)
 
 void handleMqttMessage(String &topic, String &payload)
 {
-  Serial.printf("[%s]: %s\n", topic, payload);
+  Serial.print("[");
+  Serial.print(topic);
+  Serial.print("] ");
+  Serial.println(payload);
 
-  if (systemState.value() == SystemState::UNKNOWN && topic.endsWith(topicStepperPositionSavedGet) && !payload.isEmpty())
+  if (systemState.value() == SystemState::UNKNOWN && topic.endsWith(topicStepperPositionGet) && !payload.isEmpty())
   {
+    // mqttUnSubscribe(topicStepperPositionGet);
     stepperPosition.setValue(payload.toInt());
     stepper.setCurrentPosition(stepperPosition.value());
-    updateSystemState(SystemState::READY);
     return;
   }
 
@@ -109,8 +147,6 @@ void handleMqttMessage(String &topic, String &payload)
     {
       stepperPositionMax.setValue(payload.toInt());
     }
-
-    updateSystemState(SystemState::READY);
     return;
   }
 
@@ -198,8 +234,7 @@ void handleSystemStateChange(SystemState state)
 void bindObservers()
 {
   stepperPosition.addObserver([](long value)
-                              { mqttQueueHandler.queueMessage(topicStepperPositionGet, value); 
-                                mqttQueueHandler.queueMessage(topicStepperPositionSavedGet, value, true);
+                              { mqttQueueHandler.queueMessage(topicStepperPositionGet, value, true);
                                 updatePosition(); });
 
   stepperPositionMax.addObserver([](long value)
@@ -209,11 +244,6 @@ void bindObservers()
                        { mqttQueueHandler.queueMessage(topicPositionGet, value); });
 
   systemState.addObserver(handleSystemStateChange);
-}
-
-void mqttSubscribe(const char *topic)
-{
-  client.subscribe(Utils.getFullTopic(deviceName, topic));
 }
 
 void setup()
@@ -235,12 +265,6 @@ void setup()
   // MQTT Config
   client.begin("homeassistant.lan", 1883, net);
   client.onMessage(handleMqttMessage);
-
-  mqttSubscribe(topicStepperPositionSet);
-  mqttSubscribe(topicStepperPositionMaxSet);
-  mqttSubscribe(topicPositionSet);
-  mqttSubscribe(topicMove);
-  mqttSubscribe(topicSystemStateSet);
 
   configureStepper();
 }
