@@ -10,6 +10,7 @@
 
 // TODO
 // * Store max value in eeprom
+// * MQTT discover for HA
 
 // Topics
 const char *topicStepperPositionSavedGet = "stepperPositionSaved/get";
@@ -56,6 +57,8 @@ bool connectMqtt()
 
 void updateSystemState(SystemState requestedState)
 {
+  Serial.printf("Current state: %d, requested state: %d\n", systemState.value(), requestedState);
+
   // Move into calibration state
   if ((systemState.value() == SystemState::UNKNOWN || systemState.value() == SystemState::READY) && requestedState == SystemState::CALIBRATE)
   {
@@ -69,10 +72,14 @@ void updateSystemState(SystemState requestedState)
     systemState.setValue(requestedState);
     return;
   }
+
+  Serial.println("Systemstate not changed");
 }
 
 void handleMqttMessage(String &topic, String &payload)
 {
+  Serial.printf("[%s]: %s\n", topic, payload);
+
   if (systemState.value() == SystemState::UNKNOWN && topic.endsWith(topicStepperPositionSavedGet) && !payload.isEmpty())
   {
     stepperPosition.setValue(payload.toInt());
@@ -204,9 +211,16 @@ void bindObservers()
   systemState.addObserver(handleSystemStateChange);
 }
 
+void mqttSubscribe(const char *topic)
+{
+  client.subscribe(Utils.getFullTopic(deviceName, topic));
+}
+
 void setup()
 {
-  Utils.setDeviceName(deviceName);
+  Serial.begin(115200);
+
+  Utils.setDeviceName(deviceName, "curtain");
 
   // WiFi config
   WiFi.mode(WIFI_STA);
@@ -222,11 +236,11 @@ void setup()
   client.begin("homeassistant.lan", 1883, net);
   client.onMessage(handleMqttMessage);
 
-  client.subscribe(topicStepperPositionSet);
-  client.subscribe(topicStepperPositionMaxSet);
-  client.subscribe(topicPositionSet);
-  client.subscribe(topicMove);
-  client.subscribe(topicSystemStateSet);
+  mqttSubscribe(topicStepperPositionSet);
+  mqttSubscribe(topicStepperPositionMaxSet);
+  mqttSubscribe(topicPositionSet);
+  mqttSubscribe(topicMove);
+  mqttSubscribe(topicSystemStateSet);
 
   configureStepper();
 }
@@ -236,6 +250,7 @@ void triggerObservers()
   stepperPosition.trigger();
   stepperPositionMax.trigger();
   position.trigger();
+  systemState.trigger();
 }
 
 void loop()

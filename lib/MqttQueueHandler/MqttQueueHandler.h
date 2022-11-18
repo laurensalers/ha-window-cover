@@ -1,7 +1,8 @@
 #ifndef _MQTTWRAPPER_h
 #define _MQTTWRAPPER_h
 
-#include "MQTTClient.h"
+#include <MQTTClient.h>
+#include <Utils.h>
 
 #define MAX_MESSAGE_LENGTH 20
 
@@ -32,7 +33,7 @@ public:
         {
             MqttMessage current = _mqttMessageQueue[_mqttCurrentMessage];
 
-            const char *fullTopic = getFullTopic(current.topic);
+            const char *fullTopic = Utils.getFullTopic(_baseTopic, current.topic);
 #if DEBUG
             Serial.println(fullTopic);
             Serial.println(current.message);
@@ -63,19 +64,12 @@ public:
 
 private:
     const char *_baseTopic;
-    char fullTopic[50];
 
     MQTTClient *_client;
     MqttMessage _mqttMessageQueue[MAX_MESSAGE_LENGTH];
     byte _mqttMessageCount = 0;
     byte _mqttMessageQueuePosition = 0;
     byte _mqttCurrentMessage = 0;
-
-    const char *getFullTopic(const char *topic)
-    {
-        snprintf(fullTopic, sizeof(fullTopic), "%s/%s", _baseTopic, topic);
-        return fullTopic;
-    }
 
     void queueMessage(const char *topic, char *message, bool retain)
     {
