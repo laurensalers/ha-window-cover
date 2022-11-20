@@ -1,3 +1,5 @@
+#define DEBUG true
+
 #define WM_ACCESSPOINT_PASSWORD "cynu4c9r"
 
 #define STEP_PIN 1

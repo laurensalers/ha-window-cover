@@ -6,15 +6,15 @@
 #include <Config.h>
 #include <Utils.h>
 #include <QueueHandler.h>
-#include <MqttTypes.h>
+#include <MqttHelper.h>
 #include <ObservableManager.h>
 #include <ObservableValue.h>
 
 // TODO
-// * Store max value in eeprom
-// * MQTT discover for HA
-// * Implement message queue, we may not sub/pub from the handle message cb
-// * Change system state based on observers not in the mqtt handler
+// * [ ] Store max value in eeprom
+// * [ ] MQTT discover for HA
+// * [x] Implement message queue, we may not sub/pub from the handle message cb
+// * [ ] Change system state based on observers not in the mqtt handler
 
 // Topics
 const char *topicStepperPositionGet = "stepperPosition/get";
@@ -63,7 +63,9 @@ void mqttSubscribe(const char *topic)
   char fullTopic[50];
 
   Utils.setFullTopic(fullTopic, deviceName, topic);
+#if DEBUG
   Serial.printf("sub: [%s]\n", fullTopic);
+#endif
 
   client.subscribe(fullTopic);
 }
@@ -73,7 +75,9 @@ void mqttUnSubscribe(const char *topic)
   char fullTopic[50];
 
   Utils.setFullTopic(fullTopic, deviceName, topic);
+#if DEBUG
   Serial.printf("unsub: [%s]\n", fullTopic);
+#endif
 
   client.unsubscribe(fullTopic);
 }
@@ -87,7 +91,9 @@ bool connectMqtt()
 
   bool connected = client.connect(deviceName, "esp32", "cynu4c9r");
 
+#if DEBUG
   Serial.printf("WiFi connected: %i, Mqtt connected: %i\n", WiFi.isConnected(), client.connected());
+#endif
 
   if (connected)
   {
@@ -104,7 +110,9 @@ bool connectMqtt()
 
 void updateSystemState(SystemState requestedState)
 {
+#if DEBUG
   Serial.printf("Current state: %d, requested state: %d\n", systemState.value(), requestedState);
+#endif
 
   // Move into calibration state
   if ((systemState.value() == SystemState::UNKNOWN || systemState.value() == SystemState::READY) && requestedState == SystemState::CALIBRATE)
