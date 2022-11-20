@@ -5,7 +5,8 @@
 
 #include <Config.h>
 #include <Utils.h>
-#include <MqttQueueHandler.h>
+#include <QueueHandler.h>
+#include <MqttTypes.h>
 #include <ObservableValue.h>
 
 // TODO
@@ -37,8 +38,9 @@ typedef enum
 WiFiClient net;
 WiFiManager wifiManager;
 MQTTClient client;
-MqttQueueHandler mqttQueueHandler(&client, deviceName);
 AccelStepper stepper(AccelStepper::DRIVER, STEP_PIN, DIR_PIN);
+
+QueueHandler<MqttReceivedMessage> mqttReceivedMessageQueue;
 
 // Observables
 ObservableValue<long> stepperPosition(0);
@@ -111,86 +113,6 @@ void updateSystemState(SystemState requestedState)
   Serial.println("Systemstate not changed");
 }
 
-void handleMqttMessage(String &topic, String &payload)
-{
-  Serial.print("[");
-  Serial.print(topic);
-  Serial.print("] ");
-  Serial.println(payload);
-
-  if (systemState.value() == SystemState::UNKNOWN && topic.endsWith(topicStepperPositionGet) && !payload.isEmpty())
-  {
-    // mqttUnSubscribe(topicStepperPositionGet);
-    stepperPosition.setValue(payload.toInt());
-    stepper.setCurrentPosition(stepperPosition.value());
-    return;
-  }
-
-  if (topic.endsWith(topicSystemStateSet))
-  {
-    if (payload.equals("calibrate"))
-    {
-      updateSystemState(SystemState::CALIBRATE);
-      return;
-    }
-    return;
-  }
-
-  if (topic.endsWith(topicStepperPositionMaxSet))
-  {
-    // Save current position as max position
-    if (payload == "save")
-    {
-      stepperPositionMax.setValue(stepperPosition.value());
-    }
-    else
-    {
-      stepperPositionMax.setValue(payload.toInt());
-    }
-    return;
-  }
-
-  // Allow when ready or calibrating
-  if (systemState.value() != SystemState::UNKNOWN && topic.endsWith(topicMove))
-  {
-    if (payload.equals("down"))
-    {
-      stepper.moveTo(0);
-      return;
-    }
-
-    if (payload.equals("up"))
-    {
-      long santizedValue = systemState.value() == SystemState::CALIBRATE
-                               ? LONG_MAX
-                               : stepperPositionMax.value();
-
-      stepper.moveTo(santizedValue);
-      return;
-    }
-
-    stepper.stop();
-    return;
-  }
-
-  // Only allow ready state handlers below this
-  if (systemState.value() != SystemState::READY)
-  {
-    return;
-  }
-
-  if (topic.endsWith(topicPositionSet))
-  {
-    int targetPosition = payload.toInt();
-    int sanitizedTargetPosition = max(min(targetPosition, 100), 0);
-
-    float stepperPosition = (sanitizedTargetPosition / 100) * stepperPositionMax.value();
-
-    stepper.moveTo(stepperPosition);
-    return;
-  }
-}
-
 void configureStepper()
 {
 // A4988
@@ -228,22 +150,110 @@ void handleSystemStateChange(SystemState state)
     stepper.disableOutputs();
   }
 
-  mqttQueueHandler.queueMessage(topicSystemStateGet, state);
+  // mqttQueueHandler.sendMessage(topicSystemStateGet, state);
 }
 
 void bindObservers()
 {
-  stepperPosition.addObserver([](long value)
-                              { mqttQueueHandler.queueMessage(topicStepperPositionGet, value, true);
-                                updatePosition(); });
+  // stepperPosition.addObserver([](long value)
+  //                             { mqttQueueHandler.sendMessage(topicStepperPositionGet, value, true);
+  //                               updatePosition(); });
 
-  stepperPositionMax.addObserver([](long value)
-                                 { mqttQueueHandler.queueMessage(topicStepperPositionMaxGet, value); });
+  // stepperPositionMax.addObserver([](long value)
+  //                                { mqttQueueHandler.sendMessage(topicStepperPositionMaxGet, value); });
 
-  position.addObserver([](byte value)
-                       { mqttQueueHandler.queueMessage(topicPositionGet, value); });
+  // position.addObserver([](byte value)
+  //                      { mqttQueueHandler.sendMessage(topicPositionGet, value); });
 
-  systemState.addObserver(handleSystemStateChange);
+  // systemState.addObserver(handleSystemStateChange);
+}
+
+void handleMqttMessage(MqttReceivedMessage message)
+{
+  Serial.print("[");
+  Serial.print(message.topic);
+  Serial.print("] ");
+  Serial.println(message.payload);
+
+  if (systemState.value() == SystemState::UNKNOWN && message.topic.endsWith(topicStepperPositionGet) && !message.payload.isEmpty())
+  {
+    mqttUnSubscribe(topicStepperPositionGet);
+    stepperPosition.setValue(message.payload.toInt());
+    stepper.setCurrentPosition(stepperPosition.value());
+    return;
+  }
+
+  if (message.topic.endsWith(topicSystemStateSet))
+  {
+    if (message.payload.equals("calibrate"))
+    {
+      updateSystemState(SystemState::CALIBRATE);
+      return;
+    }
+    return;
+  }
+
+  if (message.topic.endsWith(topicStepperPositionMaxSet))
+  {
+    // Save current position as max position
+    if (message.payload == "save")
+    {
+      stepperPositionMax.setValue(stepperPosition.value());
+    }
+    else
+    {
+      stepperPositionMax.setValue(message.payload.toInt());
+    }
+    return;
+  }
+
+  // Allow when ready or calibrating
+  if (systemState.value() != SystemState::UNKNOWN && message.topic.endsWith(topicMove))
+  {
+    if (message.payload.equals("down"))
+    {
+      stepper.moveTo(0);
+      return;
+    }
+
+    if (message.payload.equals("up"))
+    {
+      long santizedValue = systemState.value() == SystemState::CALIBRATE
+                               ? LONG_MAX
+                               : stepperPositionMax.value();
+
+      stepper.moveTo(santizedValue);
+      return;
+    }
+
+    stepper.stop();
+    return;
+  }
+
+  // Only allow ready state handlers below this
+  if (systemState.value() != SystemState::READY)
+  {
+    return;
+  }
+
+  if (message.topic.endsWith(topicPositionSet))
+  {
+    int targetPosition = message.payload.toInt();
+    int sanitizedTargetPosition = max(min(targetPosition, 100), 0);
+
+    float stepperPosition = (sanitizedTargetPosition / 100) * stepperPositionMax.value();
+
+    stepper.moveTo(stepperPosition);
+    return;
+  }
+}
+
+void handleMqttMessageReceive(String &topic, String &payload)
+{
+  MqttReceivedMessage *message = mqttReceivedMessageQueue.getQueueEntry();
+
+  message->topic = topic;
+  message->payload = payload;
 }
 
 void setup()
@@ -263,8 +273,9 @@ void setup()
   bindObservers();
 
   // MQTT Config
+  mqttReceivedMessageQueue.setHandler(handleMqttMessage);
   client.begin("homeassistant.lan", 1883, net);
-  client.onMessage(handleMqttMessage);
+  client.onMessage(handleMqttMessageReceive);
 
   configureStepper();
 }
@@ -288,7 +299,7 @@ void loop()
   // Other
   wifiManager.process();
   client.loop();
-  mqttQueueHandler.loop();
+  mqttReceivedMessageQueue.deQueue();
 
   // Stepper
   stepper.run();
