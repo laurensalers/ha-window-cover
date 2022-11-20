@@ -135,10 +135,11 @@ void configureStepper()
 {
 // A4988
 #ifdef STEPPER_A4988
-  stepper.setEnablePin(ENABLE_PIN);
+  // stepper.setEnablePin(ENABLE_PIN);
   stepper.setAcceleration(STEPPER_ACCELERATION);
   stepper.setMaxSpeed(STEPPER_MAXSPEED);
-  stepper.disableOutputs();
+  stepper.setCurrentPosition(0);
+  // stepper.disableOutputs();
 #endif
 
   // TMC2209
@@ -157,6 +158,30 @@ void updatePosition()
   position.setValue(pos);
 }
 
+void mqttPublish(const char *topic, char *value, bool retain = false)
+{
+  char fullTopic[100];
+  Utils.setFullTopic(fullTopic, deviceName, topic);
+#if DEBUG
+  Serial.printf("[%s] %s\n", fullTopic, value);
+#endif
+  client.publish(fullTopic, value, retain, 0);
+}
+
+void mqttPublish(const char *topic, int value, bool retain = false)
+{
+  char val[10];
+  sprintf(val, "%d", value);
+  mqttPublish(topic, val, retain);
+}
+
+void mqttPublish(const char *topic, long value, bool retain = false)
+{
+  char val[10];
+  sprintf(val, "%ld", value);
+  mqttPublish(topic, val, retain);
+}
+
 void handleSystemStateChange(SystemState state)
 {
   if (state == SystemState::READY || state == SystemState::CALIBRATE)
@@ -168,22 +193,42 @@ void handleSystemStateChange(SystemState state)
     stepper.disableOutputs();
   }
 
-  // mqttQueueHandler.sendMessage(topicSystemStateGet, state);
+  switch (state)
+  {
+  case SystemState::CALIBRATE:
+    mqttPublish(topicSystemStateGet, "calibrate");
+    break;
+
+  case SystemState::READY:
+    mqttPublish(topicSystemStateGet, "available");
+    break;
+
+  default:
+    mqttPublish(topicSystemStateGet, "unavailable");
+    break;
+  }
 }
 
 void bindObservers()
 {
-  // stepperPosition.addObserver([](long value)
-  //                             { mqttQueueHandler.sendMessage(topicStepperPositionGet, value, true);
-  //                               updatePosition(); });
+  stepperPosition.addObserver([](long value) { //
+    if (systemState.value() != SystemState::UNKNOWN || value > 0)
+    {
+      mqttPublish(topicStepperPositionGet, value, true);
+    }
 
-  // stepperPositionMax.addObserver([](long value)
-  //                                { mqttQueueHandler.sendMessage(topicStepperPositionMaxGet, value); });
+    updatePosition();
+  });
 
-  // position.addObserver([](byte value)
-  //                      { mqttQueueHandler.sendMessage(topicPositionGet, value); });
+  stepperPositionMax.addObserver([](long value) { //
+    mqttPublish(topicStepperPositionMaxGet, value);
+  });
 
-  // systemState.addObserver(handleSystemStateChange);
+  position.addObserver([](byte value) { //
+    mqttPublish(topicPositionGet, value);
+  });
+
+  systemState.addObserver(handleSystemStateChange);
 }
 
 void handleMqttMessage(MqttReceivedMessage message)
@@ -289,10 +334,6 @@ void setup()
 
   // Bind mqtt to observabless
   bindObservers();
-  // ObservableManager.add(stepperPosition);
-  // ObservableManager.add(stepperPositionMax);
-  // ObservableManager.add(position);
-  // ObservableManager.add(position);
 
   // MQTT Config
   mqttReceivedMessageQueue.setHandler(handleMqttMessage);
@@ -305,10 +346,8 @@ void setup()
 void loop()
 {
   bool connectionStateChanged = connectMqtt();
-  if (connectionStateChanged)
-  {
-    observableManager.trigger();
-  }
+
+  observableManager.trigger(connectionStateChanged);
 
   // Other
   wifiManager.process();

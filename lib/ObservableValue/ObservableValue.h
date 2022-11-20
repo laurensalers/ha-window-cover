@@ -4,7 +4,7 @@
 class ObservableValueBase
 {
 public:
-    virtual void trigger();
+    virtual void trigger(bool force = false);
 };
 
 template <typename T>
@@ -32,12 +32,28 @@ public:
         }
 
         _value = newValue;
-        notifyObservers(newValue);
+        _didTrigger = false;
+        trigger();
     }
 
-    void trigger()
+    void trigger(bool force = false)
     {
+        unsigned long now = millis();
+        bool rateLimited = _rateLimit > 0;
+        bool timeout = !rateLimited || (now - _lastTrigger) > _rateLimit;
+
+        if (!force && (!timeout || _didTrigger))
+        {
+            return;
+        }
+
+#if DEBUG
+        // Serial.printf("ratelimited %i, timeout: %i, force: %i\n", rateLimited, timeout, force);
+#endif
+
         notifyObservers(_value);
+        _didTrigger = true;
+        _lastTrigger = millis();
     }
 
     void addObserver(observerFn *observer)
@@ -50,6 +66,9 @@ private:
     T _value;
     byte _observerCount = 0;
     observerFn *_observers[5];
+    unsigned long _lastTrigger = 0;
+    unsigned int _rateLimit = 200;
+    bool _didTrigger = false;
 
     void notifyObservers(T value)
     {

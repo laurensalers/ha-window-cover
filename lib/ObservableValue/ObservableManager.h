@@ -11,18 +11,14 @@ public:
         _observables = observables;
     }
 
-    void trigger()
+    void trigger(bool force = false)
     {
         byte observableCount = sizeof(_observables);
-
-#if DEBUG
-        Serial.printf("Observable count: %d\n", observableCount);
-#endif
 
         for (byte observerIndex = 0; observerIndex < observableCount; observerIndex++)
         {
             ObservableValueBase *observable = _observables[observerIndex];
-            observable->trigger();
+            observable->trigger(force);
         }
     }
 
