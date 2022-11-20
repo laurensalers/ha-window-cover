@@ -1,9 +1,15 @@
 #ifndef _OBSERVABLEVALUE_h
 #define _OBSERVABLEVALUE_h
 
+class ObservableValueBase
+{
+public:
+    virtual void trigger();
+};
+
 template <typename T>
 
-class ObservableValue
+class ObservableValue : public ObservableValueBase
 {
 public:
     typedef void(observerFn)(T value);

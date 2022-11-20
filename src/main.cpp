@@ -7,6 +7,7 @@
 #include <Utils.h>
 #include <QueueHandler.h>
 #include <MqttTypes.h>
+#include <ObservableManager.h>
 #include <ObservableValue.h>
 
 // TODO
@@ -48,6 +49,15 @@ ObservableValue<long> stepperPositionMax(0);
 ObservableValue<byte> position(0); // In percent
 ObservableValue systemState(SystemState::UNKNOWN);
 
+ObservableValueBase *observables[] = {
+    &stepperPosition,
+    &stepperPositionMax,
+    &position,
+    &systemState,
+};
+
+ObservableManagerClass observableManager(observables);
+
 void mqttSubscribe(const char *topic)
 {
   char fullTopic[50];
@@ -77,6 +87,8 @@ bool connectMqtt()
 
   bool connected = client.connect(deviceName, "esp32", "cynu4c9r");
 
+  Serial.printf("WiFi connected: %i, Mqtt connected: %i\n", WiFi.isConnected(), client.connected());
+
   if (connected)
   {
     mqttSubscribe(topicStepperPositionSet);
@@ -86,8 +98,6 @@ bool connectMqtt()
     mqttSubscribe(topicSystemStateSet);
     mqttSubscribe(topicStepperPositionGet);
   }
-
-  Serial.printf("WiFi connected: %i, Mqtt connected: %i\n", WiFi.isConnected(), client.connected());
 
   return connected;
 }
@@ -271,6 +281,10 @@ void setup()
 
   // Bind mqtt to observabless
   bindObservers();
+  // ObservableManager.add(stepperPosition);
+  // ObservableManager.add(stepperPositionMax);
+  // ObservableManager.add(position);
+  // ObservableManager.add(position);
 
   // MQTT Config
   mqttReceivedMessageQueue.setHandler(handleMqttMessage);
@@ -280,20 +294,12 @@ void setup()
   configureStepper();
 }
 
-void triggerObservers()
-{
-  stepperPosition.trigger();
-  stepperPositionMax.trigger();
-  position.trigger();
-  systemState.trigger();
-}
-
 void loop()
 {
   bool connectionStateChanged = connectMqtt();
   if (connectionStateChanged)
   {
-    triggerObservers();
+    observableManager.trigger();
   }
 
   // Other
