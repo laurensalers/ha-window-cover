@@ -2,6 +2,7 @@
 #include <WiFiManager.h>
 #include <AccelStepper.h>
 #include <MQTT.h>
+#include <ESP_EEPROM.h>
 
 #include <Config.h>
 #include <Utils.h>
@@ -11,7 +12,7 @@
 #include <ObservableValue.h>
 
 // TODO
-// * [ ] Store max value in eeprom
+// * [x] Store max value in eeprom
 // * [ ] MQTT discover for HA
 // * [x] Implement message queue, we may not sub/pub from the handle message cb
 // * [ ] Change system state based on observers not in the mqtt handler
@@ -44,7 +45,7 @@ AccelStepper stepper(AccelStepper::DRIVER, STEP_PIN, DIR_PIN);
 QueueHandler<MqttReceivedMessage> mqttReceivedMessageQueue;
 
 // Observables
-ObservableValue<long> stepperPosition(0);
+ObservableValue<long> stepperPosition(-1);
 ObservableValue<long> stepperPositionMax(0);
 ObservableValue<byte> position(0); // In percent
 ObservableValue systemState(SystemState::UNKNOWN);
@@ -122,13 +123,16 @@ void updateSystemState(SystemState requestedState)
   }
 
   // Move from calibration state to ready state
-  if (systemState.value() == SystemState::CALIBRATE && stepperPositionMax.value() > 0 && requestedState == SystemState::READY)
+  // Move from unknown state when max position is set and
+  if ((systemState.value() == SystemState::CALIBRATE || systemState.value() == SystemState::UNKNOWN) && stepperPosition.value() > -1 && stepperPositionMax.value() > 0 && requestedState == SystemState::READY)
   {
     systemState.setValue(requestedState);
     return;
   }
 
+#if DEBUG
   Serial.println("Systemstate not changed");
+#endif
 }
 
 void configureStepper()
@@ -148,7 +152,7 @@ void configureStepper()
 
 void updatePosition()
 {
-  if (stepperPositionMax.value() == 0)
+  if (systemState.value() == SystemState::UNKNOWN || stepperPositionMax.value() == 0 || stepperPosition.value() == 0)
   {
     position.setValue(0);
     return;
@@ -160,10 +164,15 @@ void updatePosition()
 
 void mqttPublish(const char *topic, char *value, bool retain = false)
 {
+  if (!client.connected())
+  {
+    return;
+  }
+
   char fullTopic[100];
   Utils.setFullTopic(fullTopic, deviceName, topic);
 #if DEBUG
-  Serial.printf("[%s] %s\n", fullTopic, value);
+  // Serial.printf("[%s] %s\n", fullTopic, value);
 #endif
   client.publish(fullTopic, value, retain, 0);
 }
@@ -209,6 +218,11 @@ void handleSystemStateChange(SystemState state)
   }
 }
 
+void handleSystemConditionsChange()
+{
+  updateSystemState(SystemState::READY);
+}
+
 void bindObservers()
 {
   stepperPosition.addObserver([](long value) { //
@@ -218,10 +232,12 @@ void bindObservers()
     }
 
     updatePosition();
+    handleSystemConditionsChange();
   });
 
   stepperPositionMax.addObserver([](long value) { //
     mqttPublish(topicStepperPositionMaxGet, value);
+    handleSystemConditionsChange();
   });
 
   position.addObserver([](byte value) { //
@@ -246,10 +262,18 @@ void handleMqttMessage(MqttReceivedMessage message)
     return;
   }
 
+  if ((systemState.value() == SystemState::UNKNOWN || systemState.value() == SystemState::CALIBRATE) && message.topic.endsWith(topicStepperPositionSet))
+  {
+    long sanitizedStepperPosition = max((long)0, message.payload.toInt());
+    stepperPosition.setValue(sanitizedStepperPosition);
+    return;
+  }
+
   if (message.topic.endsWith(topicSystemStateSet))
   {
     if (message.payload.equals("calibrate"))
     {
+      mqttUnSubscribe(topicStepperPositionGet);
       updateSystemState(SystemState::CALIBRATE);
       return;
     }
@@ -267,6 +291,9 @@ void handleMqttMessage(MqttReceivedMessage message)
     {
       stepperPositionMax.setValue(message.payload.toInt());
     }
+
+    EEPROM.put(EEPROM_ADDRESS, stepperPositionMax.value());
+    EEPROM.commit();
     return;
   }
 
@@ -332,13 +359,23 @@ void setup()
   wifiManager.autoConnect(deviceName, WM_ACCESSPOINT_PASSWORD);
   wifiManager.startWebPortal();
 
-  // Bind mqtt to observabless
+  // Bind mqtt to observables
   bindObservers();
 
   // MQTT Config
   mqttReceivedMessageQueue.setHandler(handleMqttMessage);
   client.begin("homeassistant.lan", 1883, net);
   client.onMessage(handleMqttMessageReceive);
+
+  // Restore stored data
+  long stepperMaxPosition = 0;
+  EEPROM.begin(sizeof(long));
+
+  if (EEPROM.percentUsed() >= 0)
+  {
+    EEPROM.get(EEPROM_ADDRESS, stepperMaxPosition);
+    stepperPositionMax.setValue(stepperMaxPosition);
+  }
 
   configureStepper();
 }
@@ -356,5 +393,9 @@ void loop()
 
   // Stepper
   stepper.run();
-  stepperPosition.setValue(stepper.currentPosition());
+
+  if (stepperPosition.value() > -1)
+  {
+    stepperPosition.setValue(stepper.currentPosition());
+  }
 }
