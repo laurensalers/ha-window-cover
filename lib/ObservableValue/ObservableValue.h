@@ -47,12 +47,6 @@ public:
             return;
         }
 
-        if (force)
-        {
-            Serial.print("Forced state update: ");
-            Serial.println(_value);
-        }
-
 #if DEBUG
         // Serial.printf("ratelimited %i, timeout: %i, force: %i\n", rateLimited, timeout, force);
 #endif

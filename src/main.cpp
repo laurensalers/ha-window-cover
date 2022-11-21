@@ -19,7 +19,6 @@
 // Topics
 const char *topicDiscovery = "config";
 const char *topicStepperPositionGet = "stepperPosition/get";
-const char *topicStepperPositionSet = "stepperPosition/set";
 const char *topicStepperPositionMaxGet = "stepperPositionMax/get";
 const char *topicStepperPositionMaxSet = "stepperPositionMax/set";
 const char *topicPositionGet = "position/get";
@@ -176,7 +175,6 @@ bool connectMqtt()
   if (connected)
   {
     mqttSubscribe(topicStepperPositionGet);
-    mqttSubscribe(topicStepperPositionSet);
     mqttSubscribe(topicStepperPositionMaxSet);
     mqttSubscribe(topicPositionSet);
     mqttSubscribe(topicMoveSet);
@@ -323,15 +321,8 @@ void handleMqttMessage(MqttReceivedMessage message)
   if (systemState.value() == SystemState::UNKNOWN && stepperPosition.value() == -1 && message.topic.endsWith(topicStepperPositionGet) && !message.payload.isEmpty())
   {
     mqttUnSubscribe(topicStepperPositionGet);
-    stepperPosition.setValue(message.payload.toInt());
-    stepper.setCurrentPosition(stepperPosition.value());
-    return;
-  }
-
-  if ((systemState.value() == SystemState::UNKNOWN || systemState.value() == SystemState::CALIBRATE) && message.topic.endsWith(topicStepperPositionSet))
-  {
-    long sanitizedStepperPosition = max((long)0, message.payload.toInt());
-    stepperPosition.setValue(sanitizedStepperPosition);
+    stepper.setCurrentPosition(message.payload.toInt());
+    stepperPosition.setValue(stepper.currentPosition());
     return;
   }
 
