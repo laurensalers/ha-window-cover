@@ -13,8 +13,6 @@
 
 // TODO
 // * [ ] Implement TMC2209
-// * [x] MQTT discover for HA
-// * [x] Implement positionState
 
 // Topics
 const char *topicDiscovery = "config";
@@ -258,11 +256,6 @@ void handleSystemStateChange(SystemState state)
   }
 }
 
-void handleSystemConditionsChange()
-{
-  updateSystemState(SystemState::READY);
-}
-
 void bindObservers()
 {
   stepperPosition.addObserver([](long value) { //
@@ -271,14 +264,17 @@ void bindObservers()
       mqttPublish(topicStepperPositionGet, value, true);
     }
 
+    if (systemState.value() == SystemState::CALIBRATE && value > -1)
+    {
+      stepperPositionMax.setValue(value);
+    }
+
     updatePosition();
-    handleSystemConditionsChange();
   });
 
   stepperPositionMax.addObserver([](long value) { //
     mqttPublish(topicStepperPositionMaxGet, value);
     updatePosition();
-    handleSystemConditionsChange();
   });
 
   position.addObserver([](byte value) { //
@@ -323,6 +319,7 @@ void handleMqttMessage(MqttReceivedMessage message)
     mqttUnSubscribe(topicStepperPositionGet);
     stepper.setCurrentPosition(message.payload.toInt());
     stepperPosition.setValue(stepper.currentPosition());
+    updateSystemState(SystemState::READY);
     return;
   }
 
@@ -337,20 +334,15 @@ void handleMqttMessage(MqttReceivedMessage message)
     if (message.payload.equals("save"))
     {
       saveState();
+      updateSystemState(SystemState::READY);
     }
     return;
   }
 
   if (message.topic.endsWith(topicStepperPositionMaxSet))
   {
-    // Save current position as max position
-    if (message.payload == "")
-    {
-      stepperPositionMax.setValue(stepperPosition.value());
-      return;
-    }
-
     stepperPositionMax.setValue(message.payload.toInt());
+    updateSystemState(SystemState::READY);
     return;
   }
 
