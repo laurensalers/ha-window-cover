@@ -123,8 +123,12 @@ void mqttPublishDeviceDiscovery()
 {
   char payload[1000];
   char fullTopic[50];
+  char localIp[20];
+  char mac[50];
 
   Utils.setFullTopic(fullTopic, deviceName, "");
+  WiFi.localIP().toString().toCharArray(localIp, sizeof(localIp));
+  WiFi.macAddress().toCharArray(mac, sizeof(mac));
 
   sprintf(payload,
           "{"
@@ -132,7 +136,8 @@ void mqttPublishDeviceDiscovery()
           "\"unique_id\": \"%s\","
           "\"device\": {"
           "  \"name\": \"Cover %s\","
-          "  \"connections\": [[\"mac\", \"%s\"]]"
+          "  \"connections\": [[\"mac\", \"%s\"]],"
+          "  \"configuration_url\": \"http://%s/\""
           "},"
           "\"availability\": {"
           "  \"topic\": \"%s%s\""
@@ -152,7 +157,8 @@ void mqttPublishDeviceDiscovery()
           deviceName,
           deviceName,
           deviceName,
-          deviceName,
+          mac,
+          localIp,
           fullTopic, topicSystemStateGet,
           fullTopic, topicMoveSet,
           fullTopic, topicPositionStateGet,
