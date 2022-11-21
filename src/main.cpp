@@ -121,7 +121,7 @@ void mqttUnSubscribe(const char *topic)
 
 void mqttPublishDeviceDiscovery()
 {
-  char payload[550];
+  char payload[1000];
   char fullTopic[50];
 
   Utils.setFullTopic(fullTopic, deviceName, "");
@@ -130,6 +130,10 @@ void mqttPublishDeviceDiscovery()
           "{"
           "\"name\": \"Cover %s\","
           "\"unique_id\": \"%s\","
+          "\"device\": {"
+          "  \"name\": \"Cover %s\","
+          "  \"connections\": [[\"mac\", \"%s\"]]"
+          "},"
           "\"availability\": {"
           "  \"topic\": \"%s%s\""
           "},"
@@ -145,6 +149,8 @@ void mqttPublishDeviceDiscovery()
           "\"optimistic\": false,"
           "\"device_class\": \"shade\""
           "}",
+          deviceName,
+          deviceName,
           deviceName,
           deviceName,
           fullTopic, topicSystemStateGet,
