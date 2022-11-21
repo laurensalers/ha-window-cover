@@ -15,7 +15,7 @@
 // * [x] Store max value in eeprom
 // * [ ] MQTT discover for HA
 // * [x] Implement message queue, we may not sub/pub from the handle message cb
-// * [ ] Change system state based on observers not in the mqtt handler
+// * [x] Change system state based on observers not in the mqtt handler
 
 // Topics
 const char *topicStepperPositionGet = "stepperPosition/get";
@@ -26,7 +26,7 @@ const char *topicPositionGet = "position/get";
 const char *topicPositionSet = "position/set";
 const char *topicSystemStateGet = "systemstate/get";
 const char *topicSystemStateSet = "systemstate/set";
-const char *topicMove = "move/set";
+const char *topicMoveSet = "move/set";
 
 char deviceName[50];
 
@@ -98,12 +98,12 @@ bool connectMqtt()
 
   if (connected)
   {
+    mqttSubscribe(topicStepperPositionGet);
     mqttSubscribe(topicStepperPositionSet);
     mqttSubscribe(topicStepperPositionMaxSet);
     mqttSubscribe(topicPositionSet);
-    mqttSubscribe(topicMove);
+    mqttSubscribe(topicMoveSet);
     mqttSubscribe(topicSystemStateSet);
-    mqttSubscribe(topicStepperPositionGet);
   }
 
   return connected;
@@ -129,21 +129,17 @@ void updateSystemState(SystemState requestedState)
     systemState.setValue(requestedState);
     return;
   }
-
-#if DEBUG
-  Serial.println("Systemstate not changed");
-#endif
 }
 
 void configureStepper()
 {
 // A4988
 #ifdef STEPPER_A4988
-  // stepper.setEnablePin(ENABLE_PIN);
+  stepper.setEnablePin(ENABLE_PIN);
   stepper.setAcceleration(STEPPER_ACCELERATION);
   stepper.setMaxSpeed(STEPPER_MAXSPEED);
   stepper.setCurrentPosition(0);
-  // stepper.disableOutputs();
+  stepper.disableOutputs();
 #endif
 
   // TMC2209
@@ -158,7 +154,7 @@ void updatePosition()
     return;
   }
 
-  float pos = (stepperPositionMax.value() / stepperPosition.value()) * 100;
+  float pos = ((float)stepperPosition.value() / stepperPositionMax.value()) * 100;
   position.setValue(pos);
 }
 
@@ -249,12 +245,14 @@ void bindObservers()
 
 void handleMqttMessage(MqttReceivedMessage message)
 {
+#if DEBUG
   Serial.print("[");
   Serial.print(message.topic);
   Serial.print("] ");
   Serial.println(message.payload);
+#endif
 
-  if (systemState.value() == SystemState::UNKNOWN && message.topic.endsWith(topicStepperPositionGet) && !message.payload.isEmpty())
+  if (systemState.value() == SystemState::UNKNOWN && stepperPosition.value() == -1 && message.topic.endsWith(topicStepperPositionGet) && !message.payload.isEmpty())
   {
     mqttUnSubscribe(topicStepperPositionGet);
     stepperPosition.setValue(message.payload.toInt());
@@ -298,7 +296,7 @@ void handleMqttMessage(MqttReceivedMessage message)
   }
 
   // Allow when ready or calibrating
-  if (systemState.value() != SystemState::UNKNOWN && message.topic.endsWith(topicMove))
+  if (systemState.value() != SystemState::UNKNOWN && message.topic.endsWith(topicMoveSet))
   {
     if (message.payload.equals("down"))
     {
@@ -331,7 +329,7 @@ void handleMqttMessage(MqttReceivedMessage message)
     int targetPosition = message.payload.toInt();
     int sanitizedTargetPosition = max(min(targetPosition, 100), 0);
 
-    float stepperPosition = (sanitizedTargetPosition / 100) * stepperPositionMax.value();
+    float stepperPosition = ((float)sanitizedTargetPosition / 100) * stepperPositionMax.value();
 
     stepper.moveTo(stepperPosition);
     return;
