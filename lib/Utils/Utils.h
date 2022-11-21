@@ -7,7 +7,7 @@ class UtilsClass
 {
 
 public:
-    void setDeviceName(char *deviceName, const char *name)
+    void setDeviceName(char *deviceName)
     {
 #ifdef ESP32
         uint32_t chipId = 0;
@@ -20,13 +20,13 @@ public:
 #endif
 
 #ifdef ESP8266
-        sprintf(deviceName, "%s-%02x", name, ESP.getChipId());
+        sprintf(deviceName, "%02x", ESP.getChipId());
 #endif
     }
 
     void setFullTopic(char *fullTopic, const char *baseTopic, const char *topic)
     {
-        sprintf(fullTopic, "%s/%s", baseTopic, topic);
+        sprintf(fullTopic, "homeassistant/cover/%s/%s", baseTopic, topic);
     }
 };
 

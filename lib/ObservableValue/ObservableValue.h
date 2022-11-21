@@ -47,11 +47,17 @@ public:
             return;
         }
 
+        if (force)
+        {
+            Serial.print("Forced state update: ");
+            Serial.println(_value);
+        }
+
 #if DEBUG
         // Serial.printf("ratelimited %i, timeout: %i, force: %i\n", rateLimited, timeout, force);
 #endif
 
-        notifyObservers(_value);
+        notifyObservers();
         _didTrigger = true;
         _lastTrigger = millis();
     }
@@ -70,11 +76,11 @@ private:
     unsigned int _rateLimit = 200;
     bool _didTrigger = false;
 
-    void notifyObservers(T value)
+    void notifyObservers()
     {
         for (byte i = 0; i < _observerCount; i++)
         {
-            _observers[i](value);
+            _observers[i](_value);
         }
     }
 };

@@ -12,20 +12,21 @@
 #include <ObservableValue.h>
 
 // TODO
-// * [x] Store max value in eeprom
-// * [ ] MQTT discover for HA
-// * [x] Implement message queue, we may not sub/pub from the handle message cb
-// * [x] Change system state based on observers not in the mqtt handler
+// * [ ] Implement TMC2209
+// * [x] MQTT discover for HA
+// * [x] Implement positionState
 
 // Topics
+const char *topicDiscovery = "config";
 const char *topicStepperPositionGet = "stepperPosition/get";
 const char *topicStepperPositionSet = "stepperPosition/set";
 const char *topicStepperPositionMaxGet = "stepperPositionMax/get";
 const char *topicStepperPositionMaxSet = "stepperPositionMax/set";
 const char *topicPositionGet = "position/get";
 const char *topicPositionSet = "position/set";
-const char *topicSystemStateGet = "systemstate/get";
-const char *topicSystemStateSet = "systemstate/set";
+const char *topicPositionStateGet = "positionState/get";
+const char *topicSystemStateGet = "systemState/get";
+const char *topicSystemStateSet = "systemState/set";
 const char *topicMoveSet = "move/set";
 
 char deviceName[50];
@@ -37,9 +38,16 @@ typedef enum
   READY = 2
 } SystemState;
 
+typedef enum
+{
+  COVER_STOPPED,
+  COVER_OPENING,
+  COVER_CLOSING,
+} CoverState;
+
 WiFiClient net;
 WiFiManager wifiManager;
-MQTTClient client;
+MQTTClient client(1000);
 AccelStepper stepper(AccelStepper::DRIVER, STEP_PIN, DIR_PIN);
 
 QueueHandler<MqttReceivedMessage> mqttReceivedMessageQueue;
@@ -49,8 +57,10 @@ ObservableValue<long> stepperPosition(-1);
 ObservableValue<long> stepperPositionMax(0);
 ObservableValue<byte> position(0); // In percent
 ObservableValue systemState(SystemState::UNKNOWN);
+ObservableValue<CoverState> positionState(CoverState::COVER_STOPPED);
 
 ObservableValueBase *observables[] = {
+    &positionState,
     &stepperPosition,
     &stepperPositionMax,
     &position,
@@ -58,6 +68,35 @@ ObservableValueBase *observables[] = {
 };
 
 ObservableManagerClass observableManager(observables);
+
+void mqttPublish(const char *topic, char *value, bool retain = false)
+{
+  if (!client.connected())
+  {
+    return;
+  }
+
+  char fullTopic[100];
+  Utils.setFullTopic(fullTopic, deviceName, topic);
+#if DEBUG
+  // Serial.printf("[%s] %s\n", fullTopic, value);
+#endif
+  client.publish(fullTopic, value, retain, 0);
+}
+
+void mqttPublish(const char *topic, int value, bool retain = false)
+{
+  char val[10];
+  sprintf(val, "%d", value);
+  mqttPublish(topic, val, retain);
+}
+
+void mqttPublish(const char *topic, long value, bool retain = false)
+{
+  char val[10];
+  sprintf(val, "%ld", value);
+  mqttPublish(topic, val, retain);
+}
 
 void mqttSubscribe(const char *topic)
 {
@@ -83,6 +122,44 @@ void mqttUnSubscribe(const char *topic)
   client.unsubscribe(fullTopic);
 }
 
+void mqttPublishDeviceDiscovery()
+{
+  char payload[550];
+  char fullTopic[50];
+
+  Utils.setFullTopic(fullTopic, deviceName, "");
+
+  sprintf(payload,
+          "{"
+          "\"name\": \"Cover %s\","
+          "\"unique_id\": \"%s\","
+          "\"availability\": {"
+          "  \"topic\": \"%s%s\""
+          "},"
+          "\"command_topic\": \"%s%s\","
+          "\"payload_open\": \"open\","
+          "\"payload_close\": \"close\","
+          "\"payload_stop\": \"stop\","
+          "\"state_topic\": \"%s%s\","
+          "\"position_topic\": \"%s%s\","
+          "\"set_position_topic\": \"%s%s\","
+          "\"qos\": 0,"
+          "\"retain\": false,"
+          "\"optimistic\": false,"
+          "\"device_class\": \"shade\""
+          "}",
+          deviceName,
+          deviceName,
+          fullTopic, topicSystemStateGet,
+          fullTopic, topicMoveSet,
+          fullTopic, topicPositionStateGet,
+          fullTopic, topicPositionGet,
+          fullTopic, topicPositionSet);
+
+  Utils.setFullTopic(fullTopic, deviceName, topicDiscovery);
+  client.publish(fullTopic, payload);
+}
+
 bool connectMqtt()
 {
   if (client.connected() || !WiFi.isConnected())
@@ -104,6 +181,8 @@ bool connectMqtt()
     mqttSubscribe(topicPositionSet);
     mqttSubscribe(topicMoveSet);
     mqttSubscribe(topicSystemStateSet);
+
+    mqttPublishDeviceDiscovery();
   }
 
   return connected;
@@ -158,35 +237,6 @@ void updatePosition()
   position.setValue(pos);
 }
 
-void mqttPublish(const char *topic, char *value, bool retain = false)
-{
-  if (!client.connected())
-  {
-    return;
-  }
-
-  char fullTopic[100];
-  Utils.setFullTopic(fullTopic, deviceName, topic);
-#if DEBUG
-  // Serial.printf("[%s] %s\n", fullTopic, value);
-#endif
-  client.publish(fullTopic, value, retain, 0);
-}
-
-void mqttPublish(const char *topic, int value, bool retain = false)
-{
-  char val[10];
-  sprintf(val, "%d", value);
-  mqttPublish(topic, val, retain);
-}
-
-void mqttPublish(const char *topic, long value, bool retain = false)
-{
-  char val[10];
-  sprintf(val, "%ld", value);
-  mqttPublish(topic, val, retain);
-}
-
 void handleSystemStateChange(SystemState state)
 {
   if (state == SystemState::READY || state == SystemState::CALIBRATE)
@@ -200,16 +250,12 @@ void handleSystemStateChange(SystemState state)
 
   switch (state)
   {
-  case SystemState::CALIBRATE:
-    mqttPublish(topicSystemStateGet, "calibrate");
-    break;
-
   case SystemState::READY:
-    mqttPublish(topicSystemStateGet, "available");
+    mqttPublish(topicSystemStateGet, "online");
     break;
 
   default:
-    mqttPublish(topicSystemStateGet, "unavailable");
+    mqttPublish(topicSystemStateGet, "offline");
     break;
   }
 }
@@ -239,6 +285,21 @@ void bindObservers()
 
   position.addObserver([](byte value) { //
     mqttPublish(topicPositionGet, value);
+  });
+
+  positionState.addObserver([](CoverState value) { //
+    switch (value)
+    {
+    case CoverState::COVER_OPENING:
+      mqttPublish(topicPositionStateGet, "opening");
+      break;
+    case CoverState::COVER_CLOSING:
+      mqttPublish(topicPositionStateGet, "closing");
+      break;
+    case CoverState::COVER_STOPPED:
+      mqttPublish(topicPositionStateGet, "stopped");
+      break;
+    }
   });
 
   systemState.addObserver(handleSystemStateChange);
@@ -305,13 +366,13 @@ void handleMqttMessage(MqttReceivedMessage message)
   // Allow when ready or calibrating
   if (systemState.value() != SystemState::UNKNOWN && message.topic.endsWith(topicMoveSet))
   {
-    if (message.payload.equals("down"))
+    if (message.payload.equals("close"))
     {
       stepper.moveTo(0);
       return;
     }
 
-    if (message.payload.equals("up"))
+    if (message.payload.equals("open"))
     {
       long santizedValue = systemState.value() == SystemState::CALIBRATE
                                ? LONG_MAX
@@ -355,7 +416,7 @@ void setup()
 {
   Serial.begin(115200);
 
-  Utils.setDeviceName(deviceName, "curtain");
+  Utils.setDeviceName(deviceName);
 
   // WiFi config
   WiFi.mode(WIFI_STA);
@@ -388,7 +449,6 @@ void setup()
 void loop()
 {
   bool connectionStateChanged = connectMqtt();
-
   observableManager.trigger(connectionStateChanged);
 
   // Other
@@ -401,6 +461,16 @@ void loop()
 
   if (stepperPosition.value() > -1)
   {
+    if (stepper.isRunning())
+    {
+      bool opening = stepperPosition.value() < stepper.currentPosition();
+      positionState.setValue(opening ? CoverState::COVER_OPENING : CoverState::COVER_CLOSING);
+    }
+    else
+    {
+      positionState.setValue(CoverState::COVER_STOPPED);
+    }
+
     stepperPosition.setValue(stepper.currentPosition());
   }
 }

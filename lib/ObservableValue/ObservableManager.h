@@ -13,7 +13,7 @@ public:
 
     void trigger(bool force = false)
     {
-        byte observableCount = sizeof(_observables);
+        byte observableCount = sizeof(_observables) + 1;
 
         for (byte observerIndex = 0; observerIndex < observableCount; observerIndex++)
         {
