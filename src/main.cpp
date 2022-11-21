@@ -397,7 +397,9 @@ void handleMqttMessageReceive(String &topic, String &payload)
 
 void setup()
 {
+#if DEBUG
   Serial.begin(115200);
+#endif
 
   Utils.setDeviceName(deviceName);
 
@@ -440,13 +442,13 @@ void loop()
   mqttReceivedMessageQueue.deQueue();
 
   // Stepper
-  stepper.run();
-
   if (stepperPosition.value() > -1)
   {
+    stepper.run();
+
     if (stepper.isRunning())
     {
-      bool opening = stepperPosition.value() < stepper.currentPosition();
+      bool opening = stepper.currentPosition() < stepper.targetPosition();
       positionState.setValue(opening ? CoverState::COVER_OPENING : CoverState::COVER_CLOSING);
     }
     else
