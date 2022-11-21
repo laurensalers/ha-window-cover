@@ -233,6 +233,7 @@ void bindObservers()
 
   stepperPositionMax.addObserver([](long value) { //
     mqttPublish(topicStepperPositionMaxGet, value);
+    updatePosition();
     handleSystemConditionsChange();
   });
 
@@ -241,6 +242,12 @@ void bindObservers()
   });
 
   systemState.addObserver(handleSystemStateChange);
+}
+
+void saveState()
+{
+  EEPROM.put(EEPROM_ADDRESS, stepperPositionMax.value());
+  EEPROM.commit();
 }
 
 void handleMqttMessage(MqttReceivedMessage message)
@@ -275,23 +282,23 @@ void handleMqttMessage(MqttReceivedMessage message)
       updateSystemState(SystemState::CALIBRATE);
       return;
     }
+    if (message.payload.equals("save"))
+    {
+      saveState();
+    }
     return;
   }
 
   if (message.topic.endsWith(topicStepperPositionMaxSet))
   {
     // Save current position as max position
-    if (message.payload == "save")
+    if (message.payload == "")
     {
       stepperPositionMax.setValue(stepperPosition.value());
-    }
-    else
-    {
-      stepperPositionMax.setValue(message.payload.toInt());
+      return;
     }
 
-    EEPROM.put(EEPROM_ADDRESS, stepperPositionMax.value());
-    EEPROM.commit();
+    stepperPositionMax.setValue(message.payload.toInt());
     return;
   }
 
