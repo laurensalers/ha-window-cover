@@ -24,10 +24,20 @@ public:
 #endif
     }
 
-    void setFullTopic(char *fullTopic, const char *baseTopic, const char *topic)
+public:
+    char *getFullTopic(char *baseTopic, const char *topic)
     {
-        sprintf(fullTopic, "homeassistant/cover/%s/%s", baseTopic, topic);
+        snprintf(_fullTopic, sizeof(_fullTopic), "%s/%s", baseTopic, topic);
+        return _fullTopic;
     }
+
+private:
+    char _fullTopic[100];
+
+    // void setFullTopic(char *fullTopic, const char *entityType, const char *entityId, const char *topic)
+    // {
+    //     sprintf(fullTopic, "homeassistant/%s/%s/%s", entityType, entityId, topic);
+    // }
 };
 
 UtilsClass Utils;

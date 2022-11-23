@@ -27,6 +27,7 @@ const char *topicSystemStateSet = "systemState/set";
 const char *topicMoveSet = "move/set";
 
 char deviceName[50];
+char coverBaseTopic[100];
 
 typedef enum
 {
@@ -66,40 +67,35 @@ ObservableValueBase *observables[] = {
 
 ObservableManagerClass observableManager(observables);
 
-void mqttPublish(const char *topic, char *value, bool retain = false)
+void mqttPublish(const char *fullTopic, char *value, bool retain = false)
 {
   if (!client.connected())
   {
     return;
   }
 
-  char fullTopic[100];
-  Utils.setFullTopic(fullTopic, deviceName, topic);
 #if DEBUG
   // Serial.printf("[%s] %s\n", fullTopic, value);
 #endif
   client.publish(fullTopic, value, retain, 0);
 }
 
-void mqttPublish(const char *topic, int value, bool retain = false)
+void mqttPublish(const char *fullTopic, int value, bool retain = false)
 {
   char val[10];
   sprintf(val, "%d", value);
-  mqttPublish(topic, val, retain);
+  mqttPublish(fullTopic, val, retain);
 }
 
-void mqttPublish(const char *topic, long value, bool retain = false)
+void mqttPublish(const char *fullTopic, long value, bool retain = false)
 {
   char val[10];
   sprintf(val, "%ld", value);
-  mqttPublish(topic, val, retain);
+  mqttPublish(fullTopic, val, retain);
 }
 
-void mqttSubscribe(const char *topic)
+void mqttSubscribe(const char *fullTopic)
 {
-  char fullTopic[50];
-
-  Utils.setFullTopic(fullTopic, deviceName, topic);
 #if DEBUG
   Serial.printf("sub: [%s]\n", fullTopic);
 #endif
@@ -107,11 +103,8 @@ void mqttSubscribe(const char *topic)
   client.subscribe(fullTopic);
 }
 
-void mqttUnSubscribe(const char *topic)
+void mqttUnSubscribe(const char *fullTopic)
 {
-  char fullTopic[50];
-
-  Utils.setFullTopic(fullTopic, deviceName, topic);
 #if DEBUG
   Serial.printf("unsub: [%s]\n", fullTopic);
 #endif
@@ -122,14 +115,13 @@ void mqttUnSubscribe(const char *topic)
 void mqttPublishDeviceDiscovery()
 {
   char payload[1000];
-  char fullTopic[50];
   char localIp[20];
   char mac[50];
 
-  Utils.setFullTopic(fullTopic, deviceName, "");
   WiFi.localIP().toString().toCharArray(localIp, sizeof(localIp));
   WiFi.macAddress().toCharArray(mac, sizeof(mac));
 
+  // Send cover discovery
   sprintf(payload,
           "{"
           "\"name\": \"Cover %s\","
@@ -137,6 +129,7 @@ void mqttPublishDeviceDiscovery()
           "\"device\": {"
           "  \"name\": \"Cover %s\","
           "  \"connections\": [[\"mac\", \"%s\"]],"
+          "  \"identifiers\": [\"%s\"],"
           "  \"configuration_url\": \"http://%s/\""
           "},"
           "\"availability\": {"
@@ -158,15 +151,15 @@ void mqttPublishDeviceDiscovery()
           deviceName,
           deviceName,
           mac,
+          deviceName,
           localIp,
-          fullTopic, topicSystemStateGet,
-          fullTopic, topicMoveSet,
-          fullTopic, topicPositionStateGet,
-          fullTopic, topicPositionGet,
-          fullTopic, topicPositionSet);
+          Utils.getFullTopic(coverBaseTopic, ""), topicSystemStateGet,
+          Utils.getFullTopic(coverBaseTopic, ""), topicMoveSet,
+          Utils.getFullTopic(coverBaseTopic, ""), topicPositionStateGet,
+          Utils.getFullTopic(coverBaseTopic, ""), topicPositionGet,
+          Utils.getFullTopic(coverBaseTopic, ""), topicPositionSet);
 
-  Utils.setFullTopic(fullTopic, deviceName, topicDiscovery);
-  client.publish(fullTopic, payload);
+  mqttPublish(Utils.getFullTopic(coverBaseTopic, "config"), payload);
 }
 
 bool connectMqtt()
@@ -184,11 +177,11 @@ bool connectMqtt()
 
   if (connected)
   {
-    mqttSubscribe(topicStepperPositionGet);
-    mqttSubscribe(topicStepperPositionMaxSet);
-    mqttSubscribe(topicPositionSet);
-    mqttSubscribe(topicMoveSet);
-    mqttSubscribe(topicSystemStateSet);
+    mqttSubscribe(Utils.getFullTopic(coverBaseTopic, topicStepperPositionGet));
+    mqttSubscribe(Utils.getFullTopic(coverBaseTopic, topicStepperPositionMaxSet));
+    mqttSubscribe(Utils.getFullTopic(coverBaseTopic, topicPositionSet));
+    mqttSubscribe(Utils.getFullTopic(coverBaseTopic, topicMoveSet));
+    mqttSubscribe(Utils.getFullTopic(coverBaseTopic, topicSystemStateSet));
 
     mqttPublishDeviceDiscovery();
   }
@@ -247,23 +240,17 @@ void updatePosition()
 
 void handleSystemStateChange(SystemState state)
 {
-  if (state == SystemState::READY || state == SystemState::CALIBRATE)
-  {
-    stepper.enableOutputs();
-  }
-  else
-  {
-    stepper.disableOutputs();
-  }
-
   switch (state)
   {
+  case SystemState::CALIBRATE:
   case SystemState::READY:
-    mqttPublish(topicSystemStateGet, "online");
+    stepper.enableOutputs();
+    mqttPublish(Utils.getFullTopic(coverBaseTopic, topicSystemStateGet), (char *)"online");
     break;
 
   default:
-    mqttPublish(topicSystemStateGet, "offline");
+    stepper.disableOutputs();
+    mqttPublish(Utils.getFullTopic(coverBaseTopic, topicSystemStateGet), (char *)"offline");
     break;
   }
 }
@@ -273,7 +260,7 @@ void bindObservers()
   stepperPosition.addObserver([](long value) { //
     if (systemState.value() != SystemState::UNKNOWN || value > 0)
     {
-      mqttPublish(topicStepperPositionGet, value, true);
+      mqttPublish(Utils.getFullTopic(coverBaseTopic, topicStepperPositionGet), value, true);
     }
 
     if (systemState.value() == SystemState::CALIBRATE && value > -1)
@@ -285,25 +272,25 @@ void bindObservers()
   });
 
   stepperPositionMax.addObserver([](long value) { //
-    mqttPublish(topicStepperPositionMaxGet, value);
+    mqttPublish(Utils.getFullTopic(coverBaseTopic, topicStepperPositionMaxGet), value);
     updatePosition();
   });
 
   position.addObserver([](byte value) { //
-    mqttPublish(topicPositionGet, value);
+    mqttPublish(Utils.getFullTopic(coverBaseTopic, topicPositionGet), value);
   });
 
   positionState.addObserver([](CoverState value) { //
     switch (value)
     {
     case CoverState::COVER_OPENING:
-      mqttPublish(topicPositionStateGet, "opening");
+      mqttPublish(Utils.getFullTopic(coverBaseTopic, topicPositionStateGet), (char *)"opening");
       break;
     case CoverState::COVER_CLOSING:
-      mqttPublish(topicPositionStateGet, "closing");
+      mqttPublish(Utils.getFullTopic(coverBaseTopic, topicPositionStateGet), (char *)"closing");
       break;
     case CoverState::COVER_STOPPED:
-      mqttPublish(topicPositionStateGet, "stopped");
+      mqttPublish(Utils.getFullTopic(coverBaseTopic, topicPositionStateGet), (char *)"stopped");
       break;
     }
   });
@@ -328,7 +315,7 @@ void handleMqttMessage(MqttReceivedMessage message)
 
   if (systemState.value() == SystemState::UNKNOWN && stepperPosition.value() == -1 && message.topic.endsWith(topicStepperPositionGet) && !message.payload.isEmpty())
   {
-    mqttUnSubscribe(topicStepperPositionGet);
+    mqttUnSubscribe(Utils.getFullTopic(coverBaseTopic, topicStepperPositionGet));
     stepper.setCurrentPosition(message.payload.toInt());
     stepperPosition.setValue(stepper.currentPosition());
     updateSystemState(SystemState::READY);
@@ -339,7 +326,7 @@ void handleMqttMessage(MqttReceivedMessage message)
   {
     if (message.payload.equals("calibrate"))
     {
-      mqttUnSubscribe(topicStepperPositionGet);
+      mqttUnSubscribe(Utils.getFullTopic(coverBaseTopic, topicStepperPositionGet));
       updateSystemState(SystemState::CALIBRATE);
       return;
     }
@@ -414,6 +401,7 @@ void setup()
 #endif
 
   Utils.setDeviceName(deviceName);
+  sprintf(coverBaseTopic, "homeassistant/cover/%s", deviceName);
 
   // WiFi config
   WiFi.mode(WIFI_STA);
