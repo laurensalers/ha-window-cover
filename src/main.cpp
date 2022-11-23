@@ -29,6 +29,7 @@ const char *topicMoveSet = "move/set";
 char deviceName[50];
 char coverBaseTopic[50];
 char buttonCalibrateBaseTopic[50];
+char buttonCalibrateSaveBaseTopic[50];
 
 typedef enum
 {
@@ -165,10 +166,10 @@ void mqttPublishDeviceDiscovery()
 
   mqttPublish(Utils.getFullTopic(coverBaseTopic, "config"), payload);
 
-  // Send button discovery
+  // Send calibrate button discovery
   sprintf(payload,
           "{"
-          "\"name\": \"Cover calibrate button\","
+          "\"name\": \"Calibrate\","
           "\"entity_category\": \"config\","
           "\"icon\": \"mdi:power-settings\","
           "\"device\": {"
@@ -187,6 +188,29 @@ void mqttPublishDeviceDiscovery()
           Utils.getFullTopic(coverBaseTopic, ""), topicSystemStateSet);
 
   mqttPublish(Utils.getFullTopic(buttonCalibrateBaseTopic, "config"), payload);
+
+  // Send calibrate save button discovery
+  sprintf(payload,
+          "{"
+          "\"name\": \"Save calibration\","
+          "\"entity_category\": \"config\","
+          "\"icon\": \"mdi:power-settings\","
+          "\"device\": {"
+          "  \"name\": \"%s\","
+          "  \"identifiers\": [\"%s\"],"
+          "  \"connections\": [[\"mac\", \"%s\"]]"
+          "},"
+          "\"unique_id\": \"%s-calibrate-save\","
+          "\"command_topic\": \"%s%s\","
+          "\"payload_press\": \"save\""
+          "}",
+          deviceId,
+          deviceId,
+          mac,
+          deviceName,
+          Utils.getFullTopic(coverBaseTopic, ""), topicSystemStateSet);
+
+  mqttPublish(Utils.getFullTopic(buttonCalibrateSaveBaseTopic, "config"), payload);
 }
 
 bool connectMqtt()
@@ -430,6 +454,7 @@ void setup()
   Utils.setDeviceName(deviceName);
   sprintf(coverBaseTopic, "homeassistant/cover/%s", deviceName);
   sprintf(buttonCalibrateBaseTopic, "homeassistant/button/%s-calibrate", deviceName);
+  sprintf(buttonCalibrateSaveBaseTopic, "homeassistant/button/%s-calibrate-save", deviceName);
 
   // WiFi config
   WiFi.mode(WIFI_STA);
