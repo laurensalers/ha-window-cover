@@ -27,7 +27,8 @@ const char *topicSystemStateSet = "systemState/set";
 const char *topicMoveSet = "move/set";
 
 char deviceName[50];
-char coverBaseTopic[100];
+char coverBaseTopic[50];
+char buttonCalibrateBaseTopic[50];
 
 typedef enum
 {
@@ -117,6 +118,9 @@ void mqttPublishDeviceDiscovery()
   char payload[1000];
   char localIp[20];
   char mac[50];
+  char deviceId[50];
+
+  sprintf(deviceId, "%s-cover", deviceName);
 
   WiFi.localIP().toString().toCharArray(localIp, sizeof(localIp));
   WiFi.macAddress().toCharArray(mac, sizeof(mac));
@@ -124,10 +128,10 @@ void mqttPublishDeviceDiscovery()
   // Send cover discovery
   sprintf(payload,
           "{"
-          "\"name\": \"Cover %s\","
+          "\"name\": \"%s\","
           "\"unique_id\": \"%s\","
           "\"device\": {"
-          "  \"name\": \"Cover %s\","
+          "  \"name\": \"%s\","
           "  \"connections\": [[\"mac\", \"%s\"]],"
           "  \"identifiers\": [\"%s\"],"
           "  \"configuration_url\": \"http://%s/\""
@@ -147,11 +151,11 @@ void mqttPublishDeviceDiscovery()
           "\"optimistic\": false,"
           "\"device_class\": \"shade\""
           "}",
-          deviceName,
-          deviceName,
-          deviceName,
+          deviceId,
+          deviceId,
+          deviceId,
           mac,
-          deviceName,
+          deviceId,
           localIp,
           Utils.getFullTopic(coverBaseTopic, ""), topicSystemStateGet,
           Utils.getFullTopic(coverBaseTopic, ""), topicMoveSet,
@@ -160,6 +164,29 @@ void mqttPublishDeviceDiscovery()
           Utils.getFullTopic(coverBaseTopic, ""), topicPositionSet);
 
   mqttPublish(Utils.getFullTopic(coverBaseTopic, "config"), payload);
+
+  // Send button discovery
+  sprintf(payload,
+          "{"
+          "\"name\": \"Cover calibrate button\","
+          "\"entity_category\": \"config\","
+          "\"icon\": \"mdi:power-settings\","
+          "\"device\": {"
+          "  \"name\": \"%s\","
+          "  \"identifiers\": [\"%s\"],"
+          "  \"connections\": [[\"mac\", \"%s\"]]"
+          "},"
+          "\"unique_id\": \"%s-calibrate\","
+          "\"command_topic\": \"%s%s\","
+          "\"payload_press\": \"calibrate\""
+          "}",
+          deviceId,
+          deviceId,
+          mac,
+          deviceName,
+          Utils.getFullTopic(coverBaseTopic, ""), topicSystemStateSet);
+
+  mqttPublish(Utils.getFullTopic(buttonCalibrateBaseTopic, "config"), payload);
 }
 
 bool connectMqtt()
@@ -402,6 +429,7 @@ void setup()
 
   Utils.setDeviceName(deviceName);
   sprintf(coverBaseTopic, "homeassistant/cover/%s", deviceName);
+  sprintf(buttonCalibrateBaseTopic, "homeassistant/button/%s-calibrate", deviceName);
 
   // WiFi config
   WiFi.mode(WIFI_STA);
