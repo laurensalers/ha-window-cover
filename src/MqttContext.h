@@ -10,19 +10,22 @@ public:
     MqttContext(
         MQTTClient *client,
         const char *entityType,
-        char *deviceName)
+        char *deviceName,
+        const char *subDeviceName = "")
     {
         _client = client;
         _deviceName = deviceName;
+        _subDeviceName = subDeviceName;
         _entityType = entityType;
     }
 
     char *getBaseTopic()
     {
         sprintf(_baseTopic,
-                "homeassistant/%s/%s",
+                "homeassistant/%s/%s%s",
                 _entityType,
-                _deviceName);
+                _deviceName,
+                _subDeviceName);
 
         return _baseTopic;
     }
@@ -82,6 +85,7 @@ private:
     char _baseTopic[100];
     char _fullTopic[100];
     char *_deviceName;
+    const char *_subDeviceName;
     const char *_entityType;
     MQTTClient *_client;
 

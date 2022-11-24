@@ -39,7 +39,6 @@ AccelStepper stepper(AccelStepper::DRIVER, STEP_PIN, DIR_PIN);
 
 QueueHandler<MqttReceivedMessage> mqttReceivedMessageQueue;
 MqttContext mqttCoverContext(&client, "cover", deviceName);
-MqttContext mqttButtonCalibrateContext(&client, "button", deviceName);
 
 // Observables
 ObservableValue<long> stepperPosition(-1);
@@ -73,11 +72,11 @@ void setDiscoveryButtonMessage(
           "\"icon\": \"mdi:power-settings\","
           "\"device\": {"
           "  \"name\": \"%s\","
-          "  \"identifiers\": [\"%s\"],"
+          "  \"identifiers\": [\"%s\"]"
           "},"
           "\"unique_id\": \"%s-%s\","
-          "\"payload_press\": \"%s\""
-          "\"command_topic\": \"%s/%s\","
+          "\"payload_press\": \"%s\","
+          "\"command_topic\": \"%s/%s\""
           "}",
           buttonText,
           deviceName,
@@ -154,14 +153,22 @@ bool connectMqtt()
     mqttCoverContext.subscribe(topicMoveSet);
     mqttCoverContext.subscribe(topicSystemStateSet);
 
-    // Publish discovery message
     char payload[1000];
 
+    // Publish cover discovery message
     setDiscoveryCoverMessage(payload);
     mqttCoverContext.publish("config", payload);
 
-    // sprintf(buttonCalibrateBaseTopic, "homeassistant/button/%s-calibrate", deviceName);
-    // sprintf(buttonCalibrateSaveBaseTopic, "homeassistant/button/%s-calibrate-save", deviceName);
+    // Publish buttons discovery message
+    const char *buttonCalibrateId = "button-calibrate";
+    MqttContext mqttButtonCalibrateContext(&client, "button", deviceName, buttonCalibrateId);
+    setDiscoveryButtonMessage(payload, buttonCalibrateId, "Calibrate start", topicSystemStateSet, "calibrate");
+    mqttButtonCalibrateContext.publish("config", payload);
+
+    const char *buttonCalibrateSaveId = "button-calibrate-save";
+    MqttContext mqttButtonCalibrateSaveContext(&client, "button", deviceName, buttonCalibrateSaveId);
+    setDiscoveryButtonMessage(payload, buttonCalibrateSaveId, "Calibrate save", topicSystemStateSet, "save");
+    mqttButtonCalibrateSaveContext.publish("config", payload);
   }
 
   return connected;
