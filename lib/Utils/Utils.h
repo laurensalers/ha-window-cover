@@ -16,28 +16,13 @@ public:
             chipId |= ((ESP.getEfuseMac() >> (40 - i)) & 0xff) << i;
         }
 
-        sprintf(deviceName, "%s-%d", MQTT_DEVICE_NAME, chipId);
+        sprintf(deviceName, "cover-%d", chipId);
 #endif
 
 #ifdef ESP8266
-        sprintf(deviceName, "%02x", ESP.getChipId());
+        sprintf(deviceName, "cover-%02x", ESP.getChipId());
 #endif
     }
-
-public:
-    char *getFullTopic(char *baseTopic, const char *topic)
-    {
-        snprintf(_fullTopic, sizeof(_fullTopic), "%s/%s", baseTopic, topic);
-        return _fullTopic;
-    }
-
-private:
-    char _fullTopic[100];
-
-    // void setFullTopic(char *fullTopic, const char *entityType, const char *entityId, const char *topic)
-    // {
-    //     sprintf(fullTopic, "homeassistant/%s/%s/%s", entityType, entityId, topic);
-    // }
 };
 
 UtilsClass Utils;

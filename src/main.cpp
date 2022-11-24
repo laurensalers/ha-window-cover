@@ -5,9 +5,10 @@
 #include <ESP_EEPROM.h>
 
 #include <Config.h>
+#include <Types.h>
 #include <Utils.h>
 #include <QueueHandler.h>
-#include <MqttHelper.h>
+#include <MqttContext.h>
 #include <ObservableManager.h>
 #include <ObservableValue.h>
 
@@ -15,7 +16,6 @@
 // * [ ] Implement TMC2209
 
 // Topics
-const char *topicDiscovery = "config";
 const char *topicStepperPositionGet = "stepperPosition/get";
 const char *topicStepperPositionMaxGet = "stepperPositionMax/get";
 const char *topicStepperPositionMaxSet = "stepperPositionMax/set";
@@ -27,23 +27,10 @@ const char *topicSystemStateSet = "systemState/set";
 const char *topicMoveSet = "move/set";
 
 char deviceName[50];
-char coverBaseTopic[50];
-char buttonCalibrateBaseTopic[50];
-char buttonCalibrateSaveBaseTopic[50];
 
-typedef enum
-{
-  UNKNOWN = 0,
-  CALIBRATE = 1,
-  READY = 2
-} SystemState;
-
-typedef enum
-{
-  COVER_STOPPED,
-  COVER_OPENING,
-  COVER_CLOSING,
-} CoverState;
+// char coverBaseTopic[50];
+// char buttonCalibrateBaseTopic[50];
+// char buttonCalibrateSaveBaseTopic[50];
 
 WiFiClient net;
 WiFiManager wifiManager;
@@ -51,6 +38,8 @@ MQTTClient client(1000);
 AccelStepper stepper(AccelStepper::DRIVER, STEP_PIN, DIR_PIN);
 
 QueueHandler<MqttReceivedMessage> mqttReceivedMessageQueue;
+MqttContext mqttCoverContext(&client, "cover", deviceName);
+MqttContext mqttButtonCalibrateContext(&client, "button", deviceName);
 
 // Observables
 ObservableValue<long> stepperPosition(-1);
@@ -69,59 +58,40 @@ ObservableValueBase *observables[] = {
 
 ObservableManagerClass observableManager(observables);
 
-void mqttPublish(const char *fullTopic, char *value, bool retain = false)
+void setDiscoveryButtonMessage(
+    char *payload,
+    const char *uniqueId,
+    const char *buttonText,
+    const char *coverTopic,
+    const char *coverPayload)
 {
-  if (!client.connected())
-  {
-    return;
-  }
-
-#if DEBUG
-  // Serial.printf("[%s] %s\n", fullTopic, value);
-#endif
-  client.publish(fullTopic, value, retain, 0);
+  // Send calibrate save button discovery
+  sprintf(payload,
+          "{"
+          "\"name\": \"%s\","
+          "\"entity_category\": \"config\","
+          "\"icon\": \"mdi:power-settings\","
+          "\"device\": {"
+          "  \"name\": \"%s\","
+          "  \"identifiers\": [\"%s\"],"
+          "},"
+          "\"unique_id\": \"%s-%s\","
+          "\"payload_press\": \"%s\""
+          "\"command_topic\": \"%s/%s\","
+          "}",
+          buttonText,
+          deviceName,
+          deviceName,
+          deviceName,
+          uniqueId,
+          coverPayload,
+          mqttCoverContext.getBaseTopic(), coverTopic);
 }
 
-void mqttPublish(const char *fullTopic, int value, bool retain = false)
+void setDiscoveryCoverMessage(char *payload)
 {
-  char val[10];
-  sprintf(val, "%d", value);
-  mqttPublish(fullTopic, val, retain);
-}
-
-void mqttPublish(const char *fullTopic, long value, bool retain = false)
-{
-  char val[10];
-  sprintf(val, "%ld", value);
-  mqttPublish(fullTopic, val, retain);
-}
-
-void mqttSubscribe(const char *fullTopic)
-{
-#if DEBUG
-  Serial.printf("sub: [%s]\n", fullTopic);
-#endif
-
-  client.subscribe(fullTopic);
-}
-
-void mqttUnSubscribe(const char *fullTopic)
-{
-#if DEBUG
-  Serial.printf("unsub: [%s]\n", fullTopic);
-#endif
-
-  client.unsubscribe(fullTopic);
-}
-
-void mqttPublishDeviceDiscovery()
-{
-  char payload[1000];
   char localIp[20];
   char mac[50];
-  char deviceId[50];
-
-  sprintf(deviceId, "%s-cover", deviceName);
 
   WiFi.localIP().toString().toCharArray(localIp, sizeof(localIp));
   WiFi.macAddress().toCharArray(mac, sizeof(mac));
@@ -133,7 +103,6 @@ void mqttPublishDeviceDiscovery()
           "\"unique_id\": \"%s\","
           "\"device\": {"
           "  \"name\": \"%s\","
-          "  \"connections\": [[\"mac\", \"%s\"]],"
           "  \"identifiers\": [\"%s\"],"
           "  \"configuration_url\": \"http://%s/\""
           "},"
@@ -144,73 +113,24 @@ void mqttPublishDeviceDiscovery()
           "\"payload_open\": \"open\","
           "\"payload_close\": \"close\","
           "\"payload_stop\": \"stop\","
-          "\"state_topic\": \"%s%s\","
-          "\"position_topic\": \"%s%s\","
-          "\"set_position_topic\": \"%s%s\","
+          "\"state_topic\": \"%s/%s\","
+          "\"position_topic\": \"%s/%s\","
+          "\"set_position_topic\": \"%s/%s\","
           "\"qos\": 0,"
           "\"retain\": false,"
           "\"optimistic\": false,"
           "\"device_class\": \"shade\""
           "}",
-          deviceId,
-          deviceId,
-          deviceId,
-          mac,
-          deviceId,
+          deviceName,
+          deviceName,
+          deviceName,
+          deviceName,
           localIp,
-          Utils.getFullTopic(coverBaseTopic, ""), topicSystemStateGet,
-          Utils.getFullTopic(coverBaseTopic, ""), topicMoveSet,
-          Utils.getFullTopic(coverBaseTopic, ""), topicPositionStateGet,
-          Utils.getFullTopic(coverBaseTopic, ""), topicPositionGet,
-          Utils.getFullTopic(coverBaseTopic, ""), topicPositionSet);
-
-  mqttPublish(Utils.getFullTopic(coverBaseTopic, "config"), payload);
-
-  // Send calibrate button discovery
-  sprintf(payload,
-          "{"
-          "\"name\": \"Calibrate\","
-          "\"entity_category\": \"config\","
-          "\"icon\": \"mdi:power-settings\","
-          "\"device\": {"
-          "  \"name\": \"%s\","
-          "  \"identifiers\": [\"%s\"],"
-          "  \"connections\": [[\"mac\", \"%s\"]]"
-          "},"
-          "\"unique_id\": \"%s-calibrate\","
-          "\"command_topic\": \"%s%s\","
-          "\"payload_press\": \"calibrate\""
-          "}",
-          deviceId,
-          deviceId,
-          mac,
-          deviceName,
-          Utils.getFullTopic(coverBaseTopic, ""), topicSystemStateSet);
-
-  mqttPublish(Utils.getFullTopic(buttonCalibrateBaseTopic, "config"), payload);
-
-  // Send calibrate save button discovery
-  sprintf(payload,
-          "{"
-          "\"name\": \"Save calibration\","
-          "\"entity_category\": \"config\","
-          "\"icon\": \"mdi:power-settings\","
-          "\"device\": {"
-          "  \"name\": \"%s\","
-          "  \"identifiers\": [\"%s\"],"
-          "  \"connections\": [[\"mac\", \"%s\"]]"
-          "},"
-          "\"unique_id\": \"%s-calibrate-save\","
-          "\"command_topic\": \"%s%s\","
-          "\"payload_press\": \"save\""
-          "}",
-          deviceId,
-          deviceId,
-          mac,
-          deviceName,
-          Utils.getFullTopic(coverBaseTopic, ""), topicSystemStateSet);
-
-  mqttPublish(Utils.getFullTopic(buttonCalibrateSaveBaseTopic, "config"), payload);
+          mqttCoverContext.getBaseTopic(), topicSystemStateGet,
+          mqttCoverContext.getBaseTopic(), topicMoveSet,
+          mqttCoverContext.getBaseTopic(), topicPositionStateGet,
+          mqttCoverContext.getBaseTopic(), topicPositionGet,
+          mqttCoverContext.getBaseTopic(), topicPositionSet);
 }
 
 bool connectMqtt()
@@ -228,13 +148,20 @@ bool connectMqtt()
 
   if (connected)
   {
-    mqttSubscribe(Utils.getFullTopic(coverBaseTopic, topicStepperPositionGet));
-    mqttSubscribe(Utils.getFullTopic(coverBaseTopic, topicStepperPositionMaxSet));
-    mqttSubscribe(Utils.getFullTopic(coverBaseTopic, topicPositionSet));
-    mqttSubscribe(Utils.getFullTopic(coverBaseTopic, topicMoveSet));
-    mqttSubscribe(Utils.getFullTopic(coverBaseTopic, topicSystemStateSet));
+    mqttCoverContext.subscribe(topicStepperPositionGet);
+    mqttCoverContext.subscribe(topicStepperPositionMaxSet);
+    mqttCoverContext.subscribe(topicPositionSet);
+    mqttCoverContext.subscribe(topicMoveSet);
+    mqttCoverContext.subscribe(topicSystemStateSet);
 
-    mqttPublishDeviceDiscovery();
+    // Publish discovery message
+    char payload[1000];
+
+    setDiscoveryCoverMessage(payload);
+    mqttCoverContext.publish("config", payload);
+
+    // sprintf(buttonCalibrateBaseTopic, "homeassistant/button/%s-calibrate", deviceName);
+    // sprintf(buttonCalibrateSaveBaseTopic, "homeassistant/button/%s-calibrate-save", deviceName);
   }
 
   return connected;
@@ -296,12 +223,12 @@ void handleSystemStateChange(SystemState state)
   case SystemState::CALIBRATE:
   case SystemState::READY:
     stepper.enableOutputs();
-    mqttPublish(Utils.getFullTopic(coverBaseTopic, topicSystemStateGet), (char *)"online");
+    mqttCoverContext.publish(topicSystemStateGet, (char *)"online");
     break;
 
   default:
     stepper.disableOutputs();
-    mqttPublish(Utils.getFullTopic(coverBaseTopic, topicSystemStateGet), (char *)"offline");
+    mqttCoverContext.publish(topicSystemStateGet, (char *)"offline");
     break;
   }
 }
@@ -311,7 +238,7 @@ void bindObservers()
   stepperPosition.addObserver([](long value) { //
     if (systemState.value() != SystemState::UNKNOWN || value > 0)
     {
-      mqttPublish(Utils.getFullTopic(coverBaseTopic, topicStepperPositionGet), value, true);
+      mqttCoverContext.publish(topicStepperPositionGet, value, true);
     }
 
     if (systemState.value() == SystemState::CALIBRATE && value > -1)
@@ -323,25 +250,25 @@ void bindObservers()
   });
 
   stepperPositionMax.addObserver([](long value) { //
-    mqttPublish(Utils.getFullTopic(coverBaseTopic, topicStepperPositionMaxGet), value);
+    mqttCoverContext.publish(topicStepperPositionMaxGet, value);
     updatePosition();
   });
 
   position.addObserver([](byte value) { //
-    mqttPublish(Utils.getFullTopic(coverBaseTopic, topicPositionGet), value);
+    mqttCoverContext.publish(topicPositionGet, value);
   });
 
   positionState.addObserver([](CoverState value) { //
     switch (value)
     {
     case CoverState::COVER_OPENING:
-      mqttPublish(Utils.getFullTopic(coverBaseTopic, topicPositionStateGet), (char *)"opening");
+      mqttCoverContext.publish(topicPositionStateGet, (char *)"opening");
       break;
     case CoverState::COVER_CLOSING:
-      mqttPublish(Utils.getFullTopic(coverBaseTopic, topicPositionStateGet), (char *)"closing");
+      mqttCoverContext.publish(topicPositionStateGet, (char *)"closing");
       break;
     case CoverState::COVER_STOPPED:
-      mqttPublish(Utils.getFullTopic(coverBaseTopic, topicPositionStateGet), (char *)"stopped");
+      mqttCoverContext.publish(topicPositionStateGet, (char *)"stopped");
       break;
     }
   });
@@ -366,7 +293,7 @@ void handleMqttMessage(MqttReceivedMessage message)
 
   if (systemState.value() == SystemState::UNKNOWN && stepperPosition.value() == -1 && message.topic.endsWith(topicStepperPositionGet) && !message.payload.isEmpty())
   {
-    mqttUnSubscribe(Utils.getFullTopic(coverBaseTopic, topicStepperPositionGet));
+    mqttCoverContext.unsubscribe(topicStepperPositionGet);
     stepper.setCurrentPosition(message.payload.toInt());
     stepperPosition.setValue(stepper.currentPosition());
     updateSystemState(SystemState::READY);
@@ -377,7 +304,7 @@ void handleMqttMessage(MqttReceivedMessage message)
   {
     if (message.payload.equals("calibrate"))
     {
-      mqttUnSubscribe(Utils.getFullTopic(coverBaseTopic, topicStepperPositionGet));
+      mqttCoverContext.unsubscribe(topicStepperPositionGet);
       updateSystemState(SystemState::CALIBRATE);
       return;
     }
@@ -452,9 +379,6 @@ void setup()
 #endif
 
   Utils.setDeviceName(deviceName);
-  sprintf(coverBaseTopic, "homeassistant/cover/%s", deviceName);
-  sprintf(buttonCalibrateBaseTopic, "homeassistant/button/%s-calibrate", deviceName);
-  sprintf(buttonCalibrateSaveBaseTopic, "homeassistant/button/%s-calibrate-save", deviceName);
 
   // WiFi config
   WiFi.mode(WIFI_STA);
