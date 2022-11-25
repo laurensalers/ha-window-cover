@@ -67,7 +67,7 @@ private:
     byte _observerCount = 0;
     observerFn *_observers[5];
     unsigned long _lastTrigger = 0;
-    unsigned int _rateLimit = 200;
+    unsigned int _rateLimit = 250;
     bool _didTrigger = false;
 
     void notifyObservers()

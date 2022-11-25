@@ -202,12 +202,11 @@ void configureStepper()
 // A4988
 #ifdef STEPPER_A4988
   stepper.setEnablePin(ENABLE_PIN);
+  stepper.disableOutputs();
   stepper.setAcceleration(STEPPER_ACCELERATION);
   stepper.setMaxSpeed(STEPPER_MAXSPEED);
   stepper.setSpeed(STEPPER_MAXSPEED);
   stepper.setCurrentPosition(0);
-
-  stepper.enableOutputs();
 #endif
 
   // TMC2209
@@ -236,7 +235,6 @@ void handleSystemStateChange(SystemState state)
     break;
 
   default:
-    stepper.disableOutputs();
     mqttCoverContext.publish(topicSystemStateGet, (char *)"offline");
     break;
   }
@@ -312,6 +310,7 @@ void handleMqttMessage(MqttReceivedMessage message)
   if (message.topic.endsWith(topicSystemStateSet))
   {
     mqttCoverContext.unsubscribe(topicStepperPositionGet);
+
     if (message.payload.equals("calibrate"))
     {
       stepper.setCurrentPosition(0);
@@ -319,14 +318,17 @@ void handleMqttMessage(MqttReceivedMessage message)
       updateSystemState(SystemState::CALIBRATE);
       return;
     }
+
     if (message.payload.equals("positionreset"))
     {
       stepper.setCurrentPosition(0);
       stepperPosition.setValue(stepper.currentPosition());
       return;
     }
+
     if (message.payload.equals("save"))
     {
+      stepperPositionMax.setValue(stepper.currentPosition());
       saveState();
       updateSystemState(SystemState::READY);
       return;
@@ -434,6 +436,30 @@ void setup()
   configureStepper();
 }
 
+void stepperRun()
+{
+  if (stepperPosition.value() == -1 || systemState.value() == SystemState::UNKNOWN)
+  {
+    stepper.disableOutputs();
+    return;
+  }
+
+  if (stepper.distanceToGo() > 0)
+  {
+    stepper.enableOutputs();
+    bool opening = stepper.currentPosition() < stepper.targetPosition();
+    positionState.setValue(opening ? CoverState::COVER_OPENING : CoverState::COVER_CLOSING);
+  }
+  else
+  {
+    stepper.disableOutputs();
+    positionState.setValue(CoverState::COVER_STOPPED);
+  }
+
+  stepper.run();
+  stepperPosition.setValue(stepper.currentPosition());
+}
+
 void loop()
 {
   bool connectionStateChanged = connectMqtt();
@@ -445,32 +471,5 @@ void loop()
   mqttReceivedMessageQueue.deQueue();
 
   // Stepper
-  if (stepperPosition.value() > -1)
-  {
-    if (systemState.value() == SystemState::READY || systemState.value() == SystemState::CALIBRATE)
-    {
-      if (stepper.isRunning() || stepper.currentPosition() != stepper.targetPosition())
-      {
-        stepper.enableOutputs();
-      }
-      else
-      {
-        stepper.disableOutputs();
-      }
-
-      stepper.run();
-    }
-
-    if (stepper.isRunning())
-    {
-      bool opening = stepper.currentPosition() < stepper.targetPosition();
-      positionState.setValue(opening ? CoverState::COVER_OPENING : CoverState::COVER_CLOSING);
-    }
-    else
-    {
-      positionState.setValue(CoverState::COVER_STOPPED);
-    }
-
-    stepperPosition.setValue(stepper.currentPosition());
-  }
+  stepperRun();
 }
