@@ -204,8 +204,10 @@ void configureStepper()
   stepper.setEnablePin(ENABLE_PIN);
   stepper.setAcceleration(STEPPER_ACCELERATION);
   stepper.setMaxSpeed(STEPPER_MAXSPEED);
+  stepper.setSpeed(STEPPER_MAXSPEED);
   stepper.setCurrentPosition(0);
-  stepper.disableOutputs();
+
+  stepper.enableOutputs();
 #endif
 
   // TMC2209
@@ -230,7 +232,6 @@ void handleSystemStateChange(SystemState state)
   {
   case SystemState::CALIBRATE:
   case SystemState::READY:
-    stepper.enableOutputs();
     mqttCoverContext.publish(topicSystemStateGet, (char *)"online");
     break;
 
@@ -446,7 +447,19 @@ void loop()
   // Stepper
   if (stepperPosition.value() > -1)
   {
-    stepper.run();
+    if (systemState.value() == SystemState::READY || systemState.value() == SystemState::CALIBRATE)
+    {
+      if (stepper.isRunning() || stepper.currentPosition() != stepper.targetPosition())
+      {
+        stepper.enableOutputs();
+      }
+      else
+      {
+        stepper.disableOutputs();
+      }
+
+      stepper.run();
+    }
 
     if (stepper.isRunning())
     {
