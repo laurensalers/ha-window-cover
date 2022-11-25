@@ -28,10 +28,6 @@ const char *topicMoveSet = "move/set";
 
 char deviceName[50];
 
-// char coverBaseTopic[50];
-// char buttonCalibrateBaseTopic[50];
-// char buttonCalibrateSaveBaseTopic[50];
-
 WiFiClient net;
 WiFiManager wifiManager;
 MQTTClient client(1000);
@@ -106,9 +102,9 @@ void setDiscoveryCoverMessage(char *payload)
           "  \"configuration_url\": \"http://%s/\""
           "},"
           "\"availability\": {"
-          "  \"topic\": \"%s%s\""
+          "  \"topic\": \"%s/%s\""
           "},"
-          "\"command_topic\": \"%s%s\","
+          "\"command_topic\": \"%s/%s\","
           "\"payload_open\": \"open\","
           "\"payload_close\": \"close\","
           "\"payload_stop\": \"stop\","
@@ -169,6 +165,11 @@ bool connectMqtt()
     MqttContext mqttButtonCalibrateSaveContext(&client, "button", deviceName, buttonCalibrateSaveId);
     setDiscoveryButtonMessage(payload, buttonCalibrateSaveId, "Calibrate save", topicSystemStateSet, "save");
     mqttButtonCalibrateSaveContext.publish("config", payload);
+
+    const char *buttonStepperResetId = "button-stepper-reset";
+    MqttContext mqttButtonStepperResetContext(&client, "button", deviceName, buttonStepperResetId);
+    setDiscoveryButtonMessage(payload, buttonStepperResetId, "Position set to 0", topicSystemStateSet, "positionreset");
+    mqttButtonStepperResetContext.publish("config", payload);
   }
 
   return connected;
@@ -309,16 +310,25 @@ void handleMqttMessage(MqttReceivedMessage message)
 
   if (message.topic.endsWith(topicSystemStateSet))
   {
+    mqttCoverContext.unsubscribe(topicStepperPositionGet);
     if (message.payload.equals("calibrate"))
     {
-      mqttCoverContext.unsubscribe(topicStepperPositionGet);
+      stepper.setCurrentPosition(0);
+      stepperPosition.setValue(stepper.currentPosition());
       updateSystemState(SystemState::CALIBRATE);
+      return;
+    }
+    if (message.payload.equals("positionreset"))
+    {
+      stepper.setCurrentPosition(0);
+      stepperPosition.setValue(stepper.currentPosition());
       return;
     }
     if (message.payload.equals("save"))
     {
       saveState();
       updateSystemState(SystemState::READY);
+      return;
     }
     return;
   }
@@ -335,17 +345,25 @@ void handleMqttMessage(MqttReceivedMessage message)
   {
     if (message.payload.equals("close"))
     {
+      if (systemState.value() == SystemState::CALIBRATE)
+      {
+        stepper.setCurrentPosition(LONG_MAX);
+      }
+
       stepper.moveTo(0);
       return;
     }
 
     if (message.payload.equals("open"))
     {
-      long santizedValue = systemState.value() == SystemState::CALIBRATE
-                               ? LONG_MAX
-                               : stepperPositionMax.value();
+      if (systemState.value() == SystemState::CALIBRATE)
+      {
+        stepper.setCurrentPosition(0);
+        stepper.moveTo(LONG_MAX);
+        return;
+      }
 
-      stepper.moveTo(santizedValue);
+      stepper.moveTo(stepperPositionMax.value());
       return;
     }
 
