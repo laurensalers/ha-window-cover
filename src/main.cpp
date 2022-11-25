@@ -215,6 +215,13 @@ void configureStepper()
 
 void updatePosition()
 {
+  // 50 so we can move up an down
+  if (systemState.value() == SystemState::CALIBRATE)
+  {
+    position.setValue(50);
+    return;
+  }
+
   if (systemState.value() == SystemState::UNKNOWN || stepperPositionMax.value() == 0 || stepperPosition.value() == 0)
   {
     position.setValue(0);
@@ -232,6 +239,7 @@ void handleSystemStateChange(SystemState state)
   case SystemState::CALIBRATE:
   case SystemState::READY:
     mqttCoverContext.publish(topicSystemStateGet, (char *)"online");
+    updatePosition();
     break;
 
   default:
@@ -438,13 +446,13 @@ void setup()
 
 void stepperRun()
 {
-  if (stepperPosition.value() == -1 || systemState.value() == SystemState::UNKNOWN)
+  if (!WiFi.isConnected() || !client.connected() || stepperPosition.value() == -1 || systemState.value() == SystemState::UNKNOWN)
   {
     stepper.disableOutputs();
     return;
   }
 
-  if (stepper.distanceToGo() > 0)
+  if (stepper.distanceToGo() != 0)
   {
     stepper.enableOutputs();
     bool opening = stepper.currentPosition() < stepper.targetPosition();
