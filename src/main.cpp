@@ -146,7 +146,7 @@ bool connectMqtt()
   bool connected = client.connect(deviceName, "esp32", "cynu4c9r");
 
 #if DEBUG
-  Serial.printf("WiFi connected: %i, Mqtt connected: %i\n", WiFi.isConnected(), client.connected());
+  debugSerial.printf("WiFi connected: %i, Mqtt connected: %i\n", WiFi.isConnected(), client.connected());
 #endif
 
   if (connected)
@@ -187,7 +187,7 @@ bool connectMqtt()
 void updateSystemState(SystemState requestedState)
 {
 #if DEBUG
-  Serial.printf("Current state: %d, requested state: %d\n", systemState.value(), requestedState);
+  debugSerial.printf("Current state: %d, requested state: %d\n", systemState.value(), requestedState);
 #endif
 
   // Move into calibration state
@@ -215,14 +215,14 @@ void configureStepper()
 
 #ifdef STEPPER_TMC2209
   TMC2209 stepperDriver;
-  stepperDriver.setup(Serial);
+  stepperDriver.setup(stepperSerial);
 
   if (!stepperDriver.isSetupAndCommunicating())
   {
     systemState.setValue(SystemState::ERROR);
 
 #if DEBUG
-    Serial.println("Stepper not setup and communicating");
+    debugSerial.println("Stepper not setup and communicating");
 #endif
     return;
   }
@@ -328,10 +328,10 @@ void saveState()
 void handleMqttMessage(MqttReceivedMessage message)
 {
 #if DEBUG
-  Serial.print("[");
-  Serial.print(message.topic);
-  Serial.print("] ");
-  Serial.println(message.payload);
+  debugSerial.print("[");
+  debugSerial.print(message.topic);
+  debugSerial.print("] ");
+  debugSerial.println(message.payload);
 #endif
 
   if (systemState.value() == SystemState::UNKNOWN && stepperPosition.value() == -1 && message.topic.endsWith(topicStepperPositionGet) && !message.payload.isEmpty())
@@ -352,7 +352,7 @@ void handleMqttMessage(MqttReceivedMessage message)
     stepper.setAcceleration(doc["acceleration"]);
 
 #if DEBUG
-    Serial.println("Stepper config updated");
+    debugSerial.println("Stepper config updated");
 #endif
   }
 
@@ -452,10 +452,10 @@ void handleMqttMessageReceive(String &topic, String &payload)
 void setup()
 {
 #if DEBUG
-  Serial.begin(115200);
+  debugSerial.begin(115200);
 #endif
 
-  Utils.setDeviceName(deviceName);
+  setDeviceName(deviceName);
 
   // WiFi config
   WiFi.mode(WIFI_STA);

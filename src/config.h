@@ -1,4 +1,4 @@
-#define DEBUG false
+#define DEBUG true
 
 #define WM_ACCESSPOINT_PASSWORD "cynu4c9r"
 
@@ -11,6 +11,9 @@
 #define STEP_PIN 0
 #define DIR_PIN 2
 #define ENABLE_PIN 3
+
+#define SOFTWARE_SERIAL_RX 5
+#define SOFTWARE_SERIAL_TX 6
 
 // #define STEPPER_A4988
 #define STEPPER_TMC2209

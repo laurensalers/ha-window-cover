@@ -40,7 +40,7 @@ public:
         char *fullTopic = getFullTopic(topic);
 
 #if DEBUG
-        // Serial.printf("[%s] %s\n", fullTopic, value);
+        // debugSerial.printf("[%s] %s\n", fullTopic, value);
 #endif
         _client->publish(fullTopic, value, retain, 0);
     }
@@ -64,7 +64,7 @@ public:
         char *fullTopic = getFullTopic(topic);
 
 #if DEBUG
-        Serial.printf("sub: [%s]\n", fullTopic);
+        debugSerial.printf("sub: [%s]\n", fullTopic);
 #endif
 
         _client->subscribe(fullTopic);
@@ -75,7 +75,7 @@ public:
         char *fullTopic = getFullTopic(topic);
 
 #if DEBUG
-        Serial.printf("unsub: [%s]\n", fullTopic);
+        debugSerial.printf("unsub: [%s]\n", fullTopic);
 #endif
 
         _client->unsubscribe(fullTopic);
