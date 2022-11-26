@@ -7,7 +7,8 @@ typedef enum
 {
     UNKNOWN = 0,
     CALIBRATE = 1,
-    READY = 2
+    READY = 2,
+    ERROR = -1
 } SystemState;
 
 typedef enum

@@ -3,8 +3,14 @@
 #include <AccelStepper.h>
 #include <MQTT.h>
 #include <ESP_EEPROM.h>
+#include <ArduinoJson.h>
 
 #include <Config.h>
+
+#ifdef STEPPER_TMC2209
+#include <TMC2209.h>
+#endif
+
 #include <Types.h>
 #include <Utils.h>
 #include <QueueHandler.h>
@@ -16,6 +22,7 @@
 // * [ ] Implement TMC2209
 
 // Topics
+const char *topicStepperConfigSet = "stepperConfig/set";
 const char *topicStepperPositionGet = "stepperPosition/get";
 const char *topicStepperPositionMaxGet = "stepperPositionMax/get";
 const char *topicStepperPositionMaxSet = "stepperPositionMax/set";
@@ -27,6 +34,7 @@ const char *topicSystemStateSet = "systemState/set";
 const char *topicMoveSet = "move/set";
 
 char deviceName[50];
+DynamicJsonDocument doc(1024);
 
 WiFiClient net;
 WiFiManager wifiManager;
@@ -148,6 +156,7 @@ bool connectMqtt()
     mqttCoverContext.subscribe(topicPositionSet);
     mqttCoverContext.subscribe(topicMoveSet);
     mqttCoverContext.subscribe(topicSystemStateSet);
+    mqttCoverContext.subscribe(topicStepperConfigSet);
 
     char payload[1000];
 
@@ -202,15 +211,34 @@ void configureStepper()
 // A4988
 #ifdef STEPPER_A4988
   stepper.setEnablePin(ENABLE_PIN);
+#endif
+
+#ifdef STEPPER_TMC2209
+  TMC2209 stepperDriver;
+  stepperDriver.setup(Serial);
+
+  if (!stepperDriver.isSetupAndCommunicating())
+  {
+    systemState.setValue(SystemState::ERROR);
+
+#if DEBUG
+    Serial.println("Stepper not setup and communicating");
+#endif
+    return;
+  }
+
+  stepperDriver.moveUsingStepDirInterface();
+  stepperDriver.enableCoolStep();
+  stepperDriver.disableStealthChop();
+  stepperDriver.setRunCurrent(100);
+  stepperDriver.enableAutomaticCurrentScaling();
+#endif
+
   stepper.disableOutputs();
   stepper.setAcceleration(STEPPER_ACCELERATION);
   stepper.setMaxSpeed(STEPPER_MAXSPEED);
   stepper.setSpeed(STEPPER_MAXSPEED);
   stepper.setCurrentPosition(0);
-#endif
-
-  // TMC2209
-  // TODO...
 }
 
 void updatePosition()
@@ -251,7 +279,7 @@ void handleSystemStateChange(SystemState state)
 void bindObservers()
 {
   stepperPosition.addObserver([](long value) { //
-    if (systemState.value() != SystemState::UNKNOWN || value > 0)
+    if (systemState.value() > 0 || value > 0)
     {
       mqttCoverContext.publish(topicStepperPositionGet, value, true);
     }
@@ -315,6 +343,19 @@ void handleMqttMessage(MqttReceivedMessage message)
     return;
   }
 
+  if (message.topic.endsWith(topicStepperConfigSet))
+  {
+    deserializeJson(doc, message.payload);
+
+    stepper.setMaxSpeed(doc["speed"]);
+    stepper.setSpeed(doc["speed"]);
+    stepper.setAcceleration(doc["acceleration"]);
+
+#if DEBUG
+    Serial.println("Stepper config updated");
+#endif
+  }
+
   if (message.topic.endsWith(topicSystemStateSet))
   {
     mqttCoverContext.unsubscribe(topicStepperPositionGet);
@@ -352,7 +393,7 @@ void handleMqttMessage(MqttReceivedMessage message)
   }
 
   // Allow when ready or calibrating
-  if (systemState.value() != SystemState::UNKNOWN && message.topic.endsWith(topicMoveSet))
+  if (systemState.value() > 0 && message.topic.endsWith(topicMoveSet))
   {
     if (message.payload.equals("close"))
     {
@@ -446,7 +487,7 @@ void setup()
 
 void stepperRun()
 {
-  if (!WiFi.isConnected() || !client.connected() || stepperPosition.value() == -1 || systemState.value() == SystemState::UNKNOWN)
+  if (!WiFi.isConnected() || !client.connected() || stepperPosition.value() == -1 || systemState.value() <= 0)
   {
     stepper.disableOutputs();
     return;
