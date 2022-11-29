@@ -217,6 +217,7 @@ void configureStepper()
 // A4988
 #ifdef STEPPER_A4988
   stepper.setEnablePin(ENABLE_PIN);
+  stepper.disableOutputs();
 #endif
 
 #ifdef STEPPER_TMC2209
@@ -239,11 +240,9 @@ void configureStepper()
   stepperDriver.enableAutomaticCurrentScaling();
 #endif
 
-  stepper.disableOutputs();
   stepper.setAcceleration(STEPPER_ACCELERATION);
   stepper.setMaxSpeed(STEPPER_MAXSPEED);
   stepper.setSpeed(STEPPER_MAXSPEED);
-  stepper.setCurrentPosition(0);
 }
 
 void updatePosition()
