@@ -10,6 +10,8 @@
 
 #define STEP_PIN 0
 #define DIR_PIN 2
+
+// Only for A4988 stepper driver
 #define ENABLE_PIN 3
 
 #define SOFTWARE_SERIAL_RX 5
@@ -26,8 +28,8 @@
 
 // TMC2209
 #ifdef STEPPER_TMC2209
-#define STEPPER_ACCELERATION 800
-#define STEPPER_MAXSPEED 400
+#define STEPPER_ACCELERATION 1000
+#define STEPPER_MAXSPEED 7000
 #endif
 
 #define EEPROM_ADDRESS 0

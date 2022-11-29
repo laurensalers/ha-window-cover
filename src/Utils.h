@@ -31,7 +31,7 @@ HardwareSerial debugSerial = Serial;
 #endif
 
 #ifdef STEPPER_TMC2209
-HardwareSerial stepperSerial = Serial;
+HardwareSerial &stepperSerial = Serial;
 #endif
 
 #endif

@@ -14,9 +14,10 @@ class ObservableValue : public ObservableValueBase
 public:
     typedef void(observerFn)(T value);
 
-    ObservableValue(T value)
+    ObservableValue(T value, unsigned int rateLimit = 250)
     {
         _value = value;
+        _rateLimit = rateLimit;
     };
 
     T value()
@@ -67,7 +68,7 @@ private:
     byte _observerCount = 0;
     observerFn *_observers[5];
     unsigned long _lastTrigger = 0;
-    unsigned int _rateLimit = 250;
+    unsigned int _rateLimit;
     bool _didTrigger = false;
 
     void notifyObservers()

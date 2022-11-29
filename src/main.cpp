@@ -19,7 +19,7 @@
 #include <ObservableValue.h>
 
 // TODO
-// * [ ] Implement TMC2209
+// * [ ] Improve enabling/disabling stepper overflows TMC serial
 
 // Topics
 const char *topicStepperConfigSet = "stepperConfig/set";
@@ -41,15 +41,21 @@ WiFiManager wifiManager;
 MQTTClient client(1000);
 AccelStepper stepper(AccelStepper::DRIVER, STEP_PIN, DIR_PIN);
 
+#ifdef STEPPER_TMC2209
+TMC2209 stepperDriver;
+#endif
+
 QueueHandler<MqttReceivedMessage> mqttReceivedMessageQueue;
 MqttContext mqttCoverContext(&client, "cover", deviceName);
 
 // Observables
 ObservableValue<long> stepperPosition(-1);
 ObservableValue<long> stepperPositionMax(0);
+ObservableValue<long> stepperDistanceToGo(0, 0);
 ObservableValue<byte> position(0); // In percent
-ObservableValue systemState(SystemState::UNKNOWN);
 ObservableValue<CoverState> positionState(CoverState::COVER_STOPPED);
+ObservableValue systemState(SystemState::UNKNOWN);
+ObservableValue<bool> systemConnected(false, 0); // Connectionstate for mqtt and WiFi
 
 ObservableValueBase *observables[] = {
     &positionState,
@@ -214,19 +220,18 @@ void configureStepper()
 #endif
 
 #ifdef STEPPER_TMC2209
-  TMC2209 stepperDriver;
   stepperDriver.setup(stepperSerial);
 
   if (!stepperDriver.isSetupAndCommunicating())
   {
     systemState.setValue(SystemState::ERROR);
-
 #if DEBUG
     debugSerial.println("Stepper not setup and communicating");
 #endif
     return;
   }
 
+  stepperDriver.disable();
   stepperDriver.moveUsingStepDirInterface();
   stepperDriver.enableCoolStep();
   stepperDriver.disableStealthChop();
@@ -271,9 +276,36 @@ void handleSystemStateChange(SystemState state)
     break;
 
   default:
-    mqttCoverContext.publish(topicSystemStateGet, (char *)"offline");
+    mqttCoverContext.publish(topicSystemStateGet, state);
     break;
   }
+}
+
+void handleStepperEnabled()
+{
+  bool stepperEnabled = systemState.value() > SystemState::UNKNOWN && systemConnected.value() && stepperDistanceToGo.value() != 0;
+
+#if DEBUG
+  debugSerial.printf("Stepper enabled: %i\n", stepperEnabled);
+#endif
+
+  if (stepperEnabled)
+  {
+#ifdef STEPPER_TMC2209
+    stepperDriver.enable();
+#endif
+#ifdef STEPPER_A4988
+    stepper.enableOutputs();
+#endif
+    return;
+  }
+
+#ifdef STEPPER_TMC2209
+  stepperDriver.disable();
+#endif
+#ifdef STEPPER_A4988
+  stepper.disableOutputs();
+#endif
 }
 
 void bindObservers()
@@ -317,6 +349,23 @@ void bindObservers()
   });
 
   systemState.addObserver(handleSystemStateChange);
+
+  stepperDistanceToGo.addObserver([](long value) { //
+    handleStepperEnabled();
+    if (value != 0)
+    {
+      bool opening = stepper.currentPosition() < stepper.targetPosition();
+      positionState.setValue(opening ? CoverState::COVER_OPENING : CoverState::COVER_CLOSING);
+    }
+    else
+    {
+      positionState.setValue(CoverState::COVER_STOPPED);
+    }
+  });
+
+  systemConnected.addObserver([](bool value) { //
+    handleStepperEnabled();
+  });
 }
 
 void saveState()
@@ -485,30 +534,6 @@ void setup()
   configureStepper();
 }
 
-void stepperRun()
-{
-  if (!WiFi.isConnected() || !client.connected() || stepperPosition.value() == -1 || systemState.value() <= 0)
-  {
-    stepper.disableOutputs();
-    return;
-  }
-
-  if (stepper.distanceToGo() != 0)
-  {
-    stepper.enableOutputs();
-    bool opening = stepper.currentPosition() < stepper.targetPosition();
-    positionState.setValue(opening ? CoverState::COVER_OPENING : CoverState::COVER_CLOSING);
-  }
-  else
-  {
-    stepper.disableOutputs();
-    positionState.setValue(CoverState::COVER_STOPPED);
-  }
-
-  stepper.run();
-  stepperPosition.setValue(stepper.currentPosition());
-}
-
 void loop()
 {
   bool connectionStateChanged = connectMqtt();
@@ -520,5 +545,12 @@ void loop()
   mqttReceivedMessageQueue.deQueue();
 
   // Stepper
-  stepperRun();
+  if (stepperPosition.value() > -1)
+  {
+    stepper.run();
+    stepperPosition.setValue(stepper.currentPosition());
+  }
+
+  stepperDistanceToGo.setValue(stepper.distanceToGo());
+  systemConnected.setValue(WiFi.isConnected() && client.connected());
 }
