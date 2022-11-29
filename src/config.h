@@ -1,4 +1,4 @@
-#define DEBUG true
+#define DEBUG false
 
 #define WM_ACCESSPOINT_PASSWORD "cynu4c9r"
 
