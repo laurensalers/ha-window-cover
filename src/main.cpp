@@ -11,6 +11,7 @@
 #include <TMC2209.h>
 #endif
 
+#include <Timer.h>
 #include <Types.h>
 #include <Utils.h>
 #include <QueueHandler.h>
@@ -44,6 +45,8 @@ TMC2209 stepperDriver;
 
 QueueHandler<MqttReceivedMessage> mqttReceivedMessageQueue;
 MqttContext mqttCoverContext(&client, "cover", deviceName);
+
+// Timers
 
 // Observables
 ObservableValue<long> stepperPosition(-1);
@@ -137,54 +140,6 @@ void setDiscoveryCoverMessage(char *payload)
           mqttCoverContext.getBaseTopic(), topicPositionStateGet,
           mqttCoverContext.getBaseTopic(), topicPositionGet,
           mqttCoverContext.getBaseTopic(), topicPositionSet);
-}
-
-bool connectMqtt()
-{
-  if (client.connected() || !WiFi.isConnected())
-  {
-    return false;
-  }
-
-  bool connected = client.connect(deviceName, "esp32", "cynu4c9r");
-
-#if DEBUG
-  debugSerial.printf("WiFi connected: %i, Mqtt connected: %i\n", WiFi.isConnected(), client.connected());
-#endif
-
-  if (connected)
-  {
-    mqttCoverContext.subscribe(topicStepperPositionGet);
-    mqttCoverContext.subscribe(topicStepperPositionMaxSet);
-    mqttCoverContext.subscribe(topicPositionSet);
-    mqttCoverContext.subscribe(topicMoveSet);
-    mqttCoverContext.subscribe(topicSystemStateSet);
-    mqttCoverContext.subscribe(topicStepperConfigSet);
-
-    char payload[1000];
-
-    // Publish cover discovery message
-    setDiscoveryCoverMessage(payload);
-    mqttCoverContext.publish("config", payload);
-
-    // Publish buttons discovery message
-    const char *buttonCalibrateId = "button-calibrate";
-    MqttContext mqttButtonCalibrateContext(&client, "button", deviceName, buttonCalibrateId);
-    setDiscoveryButtonMessage(payload, buttonCalibrateId, "Calibrate start", topicSystemStateSet, "calibrate");
-    mqttButtonCalibrateContext.publish("config", payload);
-
-    const char *buttonCalibrateSaveId = "button-calibrate-save";
-    MqttContext mqttButtonCalibrateSaveContext(&client, "button", deviceName, buttonCalibrateSaveId);
-    setDiscoveryButtonMessage(payload, buttonCalibrateSaveId, "Calibrate save", topicSystemStateSet, "save");
-    mqttButtonCalibrateSaveContext.publish("config", payload);
-
-    const char *buttonStepperResetId = "button-stepper-reset";
-    MqttContext mqttButtonStepperResetContext(&client, "button", deviceName, buttonStepperResetId);
-    setDiscoveryButtonMessage(payload, buttonStepperResetId, "Position set to 0", topicSystemStateSet, "positionreset");
-    mqttButtonStepperResetContext.publish("config", payload);
-  }
-
-  return connected;
 }
 
 void updateSystemState(SystemState requestedState)
@@ -361,6 +316,7 @@ void bindObservers()
 
   systemConnected.addObserver([](bool value) { //
     handleStepperEnabled();
+    observableManager.trigger(value);
   });
 }
 
@@ -494,6 +450,62 @@ void handleMqttMessageReceive(String &topic, String &payload)
   message->payload = payload;
 }
 
+void connectMqtt()
+{
+  if (client.connected())
+  {
+    return;
+  }
+
+  systemConnected.setValue(false);
+  if (!WiFi.isConnected())
+  {
+    return;
+  }
+
+  bool connected = client.connect(deviceName, "esp32", "cynu4c9r");
+
+#if DEBUG
+  debugSerial.printf("WiFi connected: %i, Mqtt connected: %i\n", WiFi.isConnected(), client.connected());
+#endif
+
+  if (!connected)
+  {
+    return;
+  }
+
+  mqttCoverContext.subscribe(topicStepperPositionGet);
+  mqttCoverContext.subscribe(topicStepperPositionMaxSet);
+  mqttCoverContext.subscribe(topicPositionSet);
+  mqttCoverContext.subscribe(topicMoveSet);
+  mqttCoverContext.subscribe(topicSystemStateSet);
+  mqttCoverContext.subscribe(topicStepperConfigSet);
+
+  char payload[1000];
+
+  // Publish cover discovery message
+  setDiscoveryCoverMessage(payload);
+  mqttCoverContext.publish("config", payload);
+
+  // Publish buttons discovery message
+  const char *buttonCalibrateId = "button-calibrate";
+  MqttContext mqttButtonCalibrateContext(&client, "button", deviceName, buttonCalibrateId);
+  setDiscoveryButtonMessage(payload, buttonCalibrateId, "Calibrate start", topicSystemStateSet, "calibrate");
+  mqttButtonCalibrateContext.publish("config", payload);
+
+  const char *buttonCalibrateSaveId = "button-calibrate-save";
+  MqttContext mqttButtonCalibrateSaveContext(&client, "button", deviceName, buttonCalibrateSaveId);
+  setDiscoveryButtonMessage(payload, buttonCalibrateSaveId, "Calibrate save", topicSystemStateSet, "save");
+  mqttButtonCalibrateSaveContext.publish("config", payload);
+
+  const char *buttonStepperResetId = "button-stepper-reset";
+  MqttContext mqttButtonStepperResetContext(&client, "button", deviceName, buttonStepperResetId);
+  setDiscoveryButtonMessage(payload, buttonStepperResetId, "Position set to 0", topicSystemStateSet, "positionreset");
+  mqttButtonStepperResetContext.publish("config", payload);
+
+  systemConnected.setValue(connected);
+}
+
 void setup()
 {
 #if DEBUG
@@ -528,14 +540,21 @@ void setup()
   }
 
   configureStepper();
+
+  Timer.createTimer(250, true, TimerClass::TIMER_INTERVAL, []() { //
+    connectMqtt();
+    observableManager.trigger();
+  });
 }
+
+unsigned long loopStart = 0;
+float avgLoopTime = 0;
+unsigned long counter = 0;
 
 void loop()
 {
-  bool connectionStateChanged = connectMqtt();
-  observableManager.trigger(connectionStateChanged);
-
   // Other
+  Timer.loop();
   wifiManager.process();
   client.loop();
   mqttReceivedMessageQueue.deQueue();
@@ -548,5 +567,4 @@ void loop()
   }
 
   stepperIsRunning.setValue(stepper.isRunning());
-  systemConnected.setValue(WiFi.isConnected() && client.connected());
 }
