@@ -18,9 +18,6 @@
 #include <ObservableManager.h>
 #include <ObservableValue.h>
 
-// TODO
-// * [ ] Improve enabling/disabling stepper overflows TMC serial
-
 // Topics
 const char *topicStepperConfigSet = "stepperConfig/set";
 const char *topicStepperPositionGet = "stepperPosition/get";
@@ -51,7 +48,7 @@ MqttContext mqttCoverContext(&client, "cover", deviceName);
 // Observables
 ObservableValue<long> stepperPosition(-1);
 ObservableValue<long> stepperPositionMax(0);
-ObservableValue<long> stepperDistanceToGo(0, 0);
+ObservableValue<bool> stepperIsRunning(0, 0);
 ObservableValue<byte> position(0); // In percent
 ObservableValue<CoverState> positionState(CoverState::COVER_STOPPED);
 ObservableValue systemState(SystemState::UNKNOWN);
@@ -282,7 +279,7 @@ void handleSystemStateChange(SystemState state)
 
 void handleStepperEnabled()
 {
-  bool stepperEnabled = systemState.value() > SystemState::UNKNOWN && systemConnected.value() && stepperDistanceToGo.value() != 0;
+  bool stepperEnabled = systemState.value() > SystemState::UNKNOWN && systemConnected.value() && stepperIsRunning.value() != 0;
 
 #if DEBUG
   debugSerial.printf("Stepper enabled: %i\n", stepperEnabled);
@@ -349,17 +346,17 @@ void bindObservers()
 
   systemState.addObserver(handleSystemStateChange);
 
-  stepperDistanceToGo.addObserver([](long value) { //
+  stepperIsRunning.addObserver([](bool value) { //
     handleStepperEnabled();
-    if (value != 0)
+
+    if (value)
     {
       bool opening = stepper.currentPosition() < stepper.targetPosition();
       positionState.setValue(opening ? CoverState::COVER_OPENING : CoverState::COVER_CLOSING);
+      return;
     }
-    else
-    {
-      positionState.setValue(CoverState::COVER_STOPPED);
-    }
+
+    positionState.setValue(CoverState::COVER_STOPPED);
   });
 
   systemConnected.addObserver([](bool value) { //
@@ -550,6 +547,6 @@ void loop()
     stepperPosition.setValue(stepper.currentPosition());
   }
 
-  stepperDistanceToGo.setValue(stepper.distanceToGo());
+  stepperIsRunning.setValue(stepper.isRunning());
   systemConnected.setValue(WiFi.isConnected() && client.connected());
 }
