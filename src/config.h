@@ -17,8 +17,8 @@
 #define SOFTWARE_SERIAL_RX 5
 #define SOFTWARE_SERIAL_TX 6
 
-#define STEPPER_A4988
-// #define STEPPER_TMC2209
+// #define STEPPER_A4988
+#define STEPPER_TMC2209
 
 // A4988 Stepper
 #ifdef STEPPER_A4988

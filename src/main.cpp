@@ -175,21 +175,32 @@ void configureStepper()
 #ifdef STEPPER_TMC2209
   stepperDriver.setup(stepperSerial);
 
-  if (!stepperDriver.isSetupAndCommunicating())
+  bool stepperDriverReady = false;
+
+  for (byte i = 0; i < 3; i++)
   {
-    systemState.setValue(SystemState::ERROR);
+    stepperDriverReady = stepperDriver.isSetupAndCommunicating();
+    if (stepperDriverReady)
+    {
+      break;
+    }
 #if DEBUG
     debugSerial.println("Stepper not setup and communicating");
 #endif
+    delay(1000);
+  }
+
+  if (!stepperDriverReady)
+  {
+    systemState.setValue(SystemState::ERROR);
     return;
   }
 
   stepperDriver.disable();
-  stepperDriver.moveUsingStepDirInterface();
-  stepperDriver.enableCoolStep();
-  stepperDriver.disableStealthChop();
-  stepperDriver.setRunCurrent(100);
   stepperDriver.enableAutomaticCurrentScaling();
+  stepperDriver.setRunCurrent(100);
+  stepperDriver.moveUsingStepDirInterface();
+  stepperDriver.disableStealthChop();
 #endif
 
   stepper.setAcceleration(STEPPER_ACCELERATION);
@@ -514,6 +525,8 @@ void setup()
 
   setDeviceName(deviceName);
 
+  configureStepper();
+
   // WiFi config
   WiFi.mode(WIFI_STA);
 
@@ -539,17 +552,11 @@ void setup()
     stepperPositionMax.setValue(stepperMaxPosition);
   }
 
-  configureStepper();
-
   Timer.createTimer(250, true, TimerClass::TIMER_INTERVAL, []() { //
     connectMqtt();
     observableManager.trigger();
   });
 }
-
-unsigned long loopStart = 0;
-float avgLoopTime = 0;
-unsigned long counter = 0;
 
 void loop()
 {
