@@ -198,9 +198,11 @@ void configureStepper()
 
   stepperDriver.disable();
   stepperDriver.enableAutomaticCurrentScaling();
+  stepperDriver.enableStealthChop();
   stepperDriver.setRunCurrent(100);
+  stepperDriver.setHoldCurrent(0);
+  stepperDriver.setMicrostepsPerStep(1);
   stepperDriver.moveUsingStepDirInterface();
-  stepperDriver.disableStealthChop();
 #endif
 
   stepper.setAcceleration(STEPPER_ACCELERATION);
