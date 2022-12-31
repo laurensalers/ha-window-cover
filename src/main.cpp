@@ -541,7 +541,7 @@ void setup()
 
   // MQTT Config
   mqttReceivedMessageQueue.setHandler(handleMqttMessage);
-  client.begin("homeassistant.lan", 1883, net);
+  client.begin(MQTT_SERVER, 1883, net);
   client.onMessage(handleMqttMessageReceive);
 
   // Restore stored data

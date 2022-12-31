@@ -1,6 +1,7 @@
 #define DEBUG false
 
 #define WM_ACCESSPOINT_PASSWORD "cynu4c9r"
+#define MQTT_SERVER "homeassistant.lan"
 
 // ESP-01
 // GPIO_0
