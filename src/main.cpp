@@ -47,6 +47,8 @@ QueueHandler<MqttReceivedMessage> mqttReceivedMessageQueue;
 MqttContext mqttCoverContext(&client, "cover", deviceName);
 
 // Timers
+byte timerReconnectId;
+byte timerWatchdogId;
 
 // Observables
 ObservableValue<long> stepperPosition(-1);
@@ -177,7 +179,7 @@ void configureStepper()
 
   bool stepperDriverReady = false;
 
-  for (byte i = 0; i < 3; i++)
+  for (byte i = 0; i < 5; i++)
   {
     stepperDriverReady = stepperDriver.isSetupAndCommunicating();
     if (stepperDriverReady)
@@ -236,6 +238,12 @@ void handleSystemStateChange(SystemState state)
   case SystemState::READY:
     mqttCoverContext.publish(topicSystemStateGet, (char *)"online");
     updatePosition();
+    break;
+  case SystemState::ERROR:
+#ifdef DEBUG
+    debugSerial.println("Watchdog timer started...");
+#endif
+    Timer.startTimer(timerWatchdogId);
     break;
 
   default:
@@ -557,13 +565,20 @@ void setup()
   }
 
   // WiFi/Mqtt watchdog
-  Timer.createTimer(1000, true, TimerClass::TIMER_INTERVAL, []() { //
+  timerReconnectId = Timer.createTimer(1000, true, TimerClass::TIMER_INTERVAL, []() { //
     connectMqtt();
     observableManager.trigger();
   });
+
+  // TMC2209 monitoring
+  timerWatchdogId = Timer.createTimer(5000, false, TimerClass::TIMER_ONCE, []() { //
+#ifdef STEPPER_TMC2209
 #ifdef DEBUG
     debugSerial.println("TMC2209 not connected, resetting system");
 #endif
+    ESP.reset();
+#endif
+  });
 }
 
 void loop()
