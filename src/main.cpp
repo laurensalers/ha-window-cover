@@ -361,7 +361,6 @@ void handleMqttMessage(MqttReceivedMessage message)
     deserializeJson(doc, message.payload);
 
     stepper.setMaxSpeed(doc["speed"]);
-    stepper.setSpeed(doc["speed"]);
     stepper.setAcceleration(doc["acceleration"]);
 
 #if DEBUG
