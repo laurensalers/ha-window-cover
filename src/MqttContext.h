@@ -39,7 +39,7 @@ public:
 
         char *fullTopic = getFullTopic(topic);
 
-#if DEBUG
+#ifdef DEBUG
         // debugSerial.printf("[%s] %s\n", fullTopic, value);
 #endif
         _client->publish(fullTopic, value, retain, 0);
@@ -63,7 +63,7 @@ public:
     {
         char *fullTopic = getFullTopic(topic);
 
-#if DEBUG
+#ifdef DEBUG
         debugSerial.printf("sub: [%s]\n", fullTopic);
 #endif
 
@@ -74,7 +74,7 @@ public:
     {
         char *fullTopic = getFullTopic(topic);
 
-#if DEBUG
+#ifdef DEBUG
         debugSerial.printf("unsub: [%s]\n", fullTopic);
 #endif
 

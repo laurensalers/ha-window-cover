@@ -1,4 +1,4 @@
-#define DEBUG false
+// #define DEBUG
 
 #define WM_ACCESSPOINT_PASSWORD "cynu4c9r"
 #define MQTT_SERVER "homeassistant.lan"

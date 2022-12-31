@@ -15,7 +15,7 @@ public:
 
     void trigger(bool force = false)
     {
-#if DEBUG
+#ifdef DEBUG
         // debugSerial.printf("ObservableManager trigger, force: %i\n", force);
 #endif
 

@@ -48,7 +48,7 @@ public:
             return;
         }
 
-#if DEBUG
+#ifdef DEBUG
         // debugSerial.printf("ratelimited %i, timeout: %i, force: %i\n", rateLimited, timeout, force);
 #endif
 

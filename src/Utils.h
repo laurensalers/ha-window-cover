@@ -21,7 +21,7 @@ void setDeviceName(char *deviceName)
 #endif
 }
 
-#if DEBUG
+#ifdef DEBUG
 #ifdef STEPPER_TMC2209
 SoftwareSerial debugSerial(SOFTWARE_SERIAL_RX, SOFTWARE_SERIAL_TX);
 #endif
@@ -33,5 +33,4 @@ HardwareSerial debugSerial = Serial;
 #ifdef STEPPER_TMC2209
 HardwareSerial &stepperSerial = Serial;
 #endif
-
 #endif

@@ -144,7 +144,7 @@ void setDiscoveryCoverMessage(char *payload)
 
 void updateSystemState(SystemState requestedState)
 {
-#if DEBUG
+#ifdef DEBUG
   debugSerial.printf("Current state: %d, requested state: %d\n", systemState.value(), requestedState);
 #endif
 
@@ -184,7 +184,7 @@ void configureStepper()
     {
       break;
     }
-#if DEBUG
+#ifdef DEBUG
     debugSerial.println("Stepper not setup and communicating");
 #endif
     delay(1000);
@@ -248,7 +248,7 @@ void handleStepperEnabled()
 {
   bool stepperEnabled = systemState.value() > SystemState::UNKNOWN && systemConnected.value() && stepperIsRunning.value() != 0;
 
-#if DEBUG
+#ifdef DEBUG
   debugSerial.printf("Stepper enabled: %i\n", stepperEnabled);
 #endif
 
@@ -340,7 +340,7 @@ void saveState()
 
 void handleMqttMessage(MqttReceivedMessage message)
 {
-#if DEBUG
+#ifdef DEBUG
   debugSerial.print("[");
   debugSerial.print(message.topic);
   debugSerial.print("] ");
@@ -363,7 +363,7 @@ void handleMqttMessage(MqttReceivedMessage message)
     stepper.setMaxSpeed(doc["speed"]);
     stepper.setAcceleration(doc["acceleration"]);
 
-#if DEBUG
+#ifdef DEBUG
     debugSerial.println("Stepper config updated");
 #endif
   }
@@ -463,7 +463,7 @@ void handleMqttMessageReceive(String &topic, String &payload)
 
 void connectMqtt()
 {
-#if DEBUG
+#ifdef DEBUG
   debugSerial.printf("WiFi connected: %i, Mqtt connected: %i\n", WiFi.isConnected(), client.connected());
 #endif
 
@@ -480,7 +480,7 @@ void connectMqtt()
 
   bool connected = client.connect(deviceName, "esp32", "cynu4c9r");
 
-#if DEBUG
+#ifdef DEBUG
   debugSerial.printf("WiFi connected: %i, Mqtt connected: %i\n", WiFi.isConnected(), client.connected());
 #endif
 
@@ -523,7 +523,7 @@ void connectMqtt()
 
 void setup()
 {
-#if DEBUG
+#ifdef DEBUG
   debugSerial.begin(115200);
 #endif
 
@@ -561,6 +561,9 @@ void setup()
     connectMqtt();
     observableManager.trigger();
   });
+#ifdef DEBUG
+    debugSerial.println("TMC2209 not connected, resetting system");
+#endif
 }
 
 void loop()

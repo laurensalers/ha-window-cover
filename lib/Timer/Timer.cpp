@@ -8,7 +8,7 @@ byte TimerClass::createTimer(unsigned int delay, bool enabled, TimerTypes timerT
 {
   if (timerIndex >= MAX_TIMERS)
   {
-#if DEBUG
+#ifdef DEBUG
     Serial.println("Max timers reached");
 #endif
     return -1;
@@ -28,7 +28,7 @@ byte TimerClass::createTimer(unsigned int delay, bool enabled, TimerTypes timerT
   timers[timerId] = timer;
   timerIndex++;
 
-#if DEBUG
+#ifdef DEBUG
   Serial.print("Timer: ");
   Serial.print(timerId);
   Serial.print(" ");
@@ -44,7 +44,7 @@ void TimerClass::setTimerDelay(byte id, unsigned int delay)
 
   timer.delay = delay;
 
-#if DEBUG
+#ifdef DEBUG
   Serial.print("Timer ");
   Serial.print(id);
   Serial.print(" delay ");
@@ -61,7 +61,7 @@ void TimerClass::startTimer(byte id)
     return;
   }
 
-#if DEBUG
+#ifdef DEBUG
   Serial.print("Timer start ");
   Serial.println(id);
 #endif
@@ -85,7 +85,7 @@ void TimerClass::stopTimer(byte id)
     return;
   }
 
-#if DEBUG
+#ifdef DEBUG
   Serial.print("Timer stop: ");
   Serial.println(id);
 #endif
