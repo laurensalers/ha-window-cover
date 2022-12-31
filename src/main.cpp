@@ -51,7 +51,7 @@ MqttContext mqttCoverContext(&client, "cover", deviceName);
 // Observables
 ObservableValue<long> stepperPosition(-1);
 ObservableValue<long> stepperPositionMax(0);
-ObservableValue<bool> stepperIsRunning(0, 0);
+ObservableValue<bool> stepperIsRunning(false, 0);
 ObservableValue<byte> position(0); // In percent
 ObservableValue<CoverState> positionState(CoverState::COVER_STOPPED);
 ObservableValue systemState(SystemState::UNKNOWN);
@@ -207,7 +207,6 @@ void configureStepper()
 
   stepper.setAcceleration(STEPPER_ACCELERATION);
   stepper.setMaxSpeed(STEPPER_MAXSPEED);
-  stepper.setSpeed(STEPPER_MAXSPEED);
 }
 
 void updatePosition()
