@@ -464,6 +464,10 @@ void handleMqttMessageReceive(String &topic, String &payload)
 
 void connectMqtt()
 {
+#if DEBUG
+  debugSerial.printf("WiFi connected: %i, Mqtt connected: %i\n", WiFi.isConnected(), client.connected());
+#endif
+
   if (client.connected())
   {
     return;
@@ -553,7 +557,8 @@ void setup()
     stepperPositionMax.setValue(stepperMaxPosition);
   }
 
-  Timer.createTimer(250, true, TimerClass::TIMER_INTERVAL, []() { //
+  // WiFi/Mqtt watchdog
+  Timer.createTimer(1000, true, TimerClass::TIMER_INTERVAL, []() { //
     connectMqtt();
     observableManager.trigger();
   });
