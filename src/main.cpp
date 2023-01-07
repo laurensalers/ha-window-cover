@@ -168,8 +168,12 @@ void updateSystemState(SystemState requestedState)
 
 void configureStepper()
 {
-// A4988
-#ifdef STEPPER_A4988
+#ifdef STEPPER_TMC2100
+  stepper.setPinsInverted(false, false, true);
+#endif
+
+// A4988/TMC2100
+#if defined(STEPPER_A4988) || defined(STEPPER_TMC2100)
   stepper.setEnablePin(ENABLE_PIN);
   stepper.disableOutputs();
 #endif
@@ -265,7 +269,7 @@ void handleStepperEnabled()
 #ifdef STEPPER_TMC2209
     stepperDriver.enable();
 #endif
-#ifdef STEPPER_A4988
+#if defined(STEPPER_A4988) || defined(STEPPER_TMC2100)
     stepper.enableOutputs();
 #endif
     return;
@@ -274,7 +278,7 @@ void handleStepperEnabled()
 #ifdef STEPPER_TMC2209
   stepperDriver.disable();
 #endif
-#ifdef STEPPER_A4988
+#if defined(STEPPER_A4988) || defined(STEPPER_TMC2100)
   stepper.disableOutputs();
 #endif
 }
